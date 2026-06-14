@@ -3,7 +3,6 @@
 **A**utomated **L**ocal **F**inance **R**adar & **E**xpense **D**ashboard.
 Outil de prévisionnel budgétaire personnel : Google Sheets (backend de données) + Web App GAS (frontend SPA mobile-first).
 
-Repo : `C:\Github\Budgeto` — le dossier garde son ancien nom, le projet s'appelle **Alfred**.
 Toujours utiliser "Alfred" dans le code et les messages. Répondre en **français**.
 
 ---
