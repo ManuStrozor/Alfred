@@ -6,11 +6,10 @@ const { loadAlfred } = require('./helpers/gas-env');
 const FAKE_CUR = {
   month: '06/2026', isCurrent: true,
   budget: 500, budgetInit: 1500,
-  lep: 8000, la: 20000, csl: 3000,
+  lep: 8000, la: 20000
 };
 const FAKE_FORECAST = JSON.stringify({
-  months: [FAKE_CUR],
-  cslName: 'CSL', periodText: '12 mois', monthTransactions: [],
+  months: [FAKE_CUR], periodText: '12 mois', monthTransactions: [],
 });
 
 // Calcule la clé attendue de la même façon que _geminiInputKey (sans b_date)
@@ -19,7 +18,7 @@ function expectedKey() {
   const daysLeft  = Math.max(1,
     new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1
   );
-  return `06/2026|500|8000|20000|3000|${daysLeft}`;
+  return `06/2026|500|8000|20000|${daysLeft}`;
 }
 
 // Réponse Gemini API réussie

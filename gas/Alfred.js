@@ -261,7 +261,7 @@ function getGeminiInsight(clientKey) {
         const json = JSON.parse(resp.getContentText());
         const text = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (!text) return { error: `Gemini (${model}) a renvoyé une réponse vide.` };
-        const result = { message: text, icon: weather.icon, key: inputKey, apiCalled: true, model: model };
+        const result = { message: text, key: inputKey, apiCalled: true, model: model };
         try { CACHE.put(GEMINI_CACHE_KEY, JSON.stringify(result), GEMINI_CACHE_TTL); } catch (_) {}
         return result;
       }
