@@ -1,0 +1,4 @@
+node_modules/
+.claude/
+Alfred.min.js
+coverage/

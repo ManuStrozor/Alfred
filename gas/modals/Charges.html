@@ -1,0 +1,67 @@
+<!-- Modal — Charges (lignes Prevs) -->
+<div id="modal-charges" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet modal-sheet--large">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="charges-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title">Charges</span>
+        <button id="btn-charges-filter" class="charges-filter-btn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+          <span id="filter-count-badge" class="filter-count-badge"></span>
+        </button>
+        <button id="btn-add-prev" class="btn-pill" type="button">＋ Ajouter</button>
+      </div>
+    </div>
+
+    <!-- Panneau de filtres (masqué par défaut) -->
+    <div id="charges-filter-panel" class="charges-filter-panel">
+
+      <div class="filter-row">
+        <div class="filter-field">
+          <label class="filter-field-label">Mois actif</label>
+          <select id="filter-month" class="form-input"></select>
+        </div>
+        <div class="filter-field">
+          <label class="filter-field-label">Type</label>
+          <select id="filter-type" class="form-input"></select>
+        </div>
+      </div>
+
+      <div class="filter-field">
+        <label class="filter-field-label">Règle budgétaire</label>
+        <div class="filter-rule-pills" id="filter-rule-pills">
+          <button type="button" class="filter-rule-pill is-active" data-rule="">Tous</button>
+          <button type="button" class="filter-rule-pill" data-rule="Besoins">Besoins</button>
+          <button type="button" class="filter-rule-pill" data-rule="Envies">Envies</button>
+          <button type="button" class="filter-rule-pill" data-rule="Epargne">Épargne</button>
+          <button type="button" class="filter-rule-pill" data-rule="Dette">Dette</button>
+        </div>
+      </div>
+
+      <div class="filter-actions">
+        <button id="btn-filter-reset"  class="btn-secondary-sm" type="button">Réinitialiser</button>
+        <button id="btn-filter-apply"  class="btn-primary" type="button">Appliquer</button>
+      </div>
+
+    </div>
+
+    <!-- Chips des filtres actifs -->
+    <div id="filter-chips" class="filter-chips"></div>
+
+    <!-- Résumé -->
+    <div id="charges-summary" class="charges-summary">
+      <span class="charges-sum-pos"><span id="charges-sum-pos"></span> entrées</span>
+      <span class="charges-sum-dot">·</span>
+      <span class="charges-sum-neg"><span id="charges-sum-neg"></span> sorties</span>
+      <span class="charges-sum-dot">·</span>
+      <span class="charges-sum-sav"><span id="charges-sum-sav"></span> épargne</span>
+    </div>
+
+    <!-- Liste -->
+    <div id="charges-list" class="charges-list">
+      <div class="skeleton skel-box"></div>
+    </div>
+
+  </div>
+</div>

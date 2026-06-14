@@ -1,0 +1,25 @@
+<!-- Modal — Configuration des comptes Enable Banking -->
+<div id="modal-accounts" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="accounts-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title">Comptes · Connexions disponibles</span>
+      </div>
+    </div>
+
+    <div style="padding: 16px 16px 0; font-size:.78rem; color:var(--clr-muted); line-height:1.5">
+      Sélectionnez les comptes à afficher sur la page Budget. Le compte principal (⭐) est celui utilisé pour l'import des transactions.
+    </div>
+
+    <div id="accounts-list-skel" class="skeleton skel-box" style="margin:16px"></div>
+    <ul id="accounts-list" class="action-list" style="display:none"></ul>
+
+    <div style="padding:16px; display:flex; flex-direction:column; gap:8px">
+      <button id="btn-accounts-refresh" class="btn-secondary-sm" type="button">🔄 Rafraîchir les comptes</button>
+      <button id="btn-accounts-save" class="btn-primary" type="button">Enregistrer</button>
+    </div>
+
+  </div>
+</div>

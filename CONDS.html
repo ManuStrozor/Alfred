@@ -1,0 +1,359 @@
+<style>
+  :root {
+    --bg: #0d0d1a;
+    --card: rgba(255, 255, 255, 0.05);
+    --border: rgba(255, 255, 255, 0.12);
+    --text: rgba(255, 255, 255, 0.90);
+    --muted: rgba(255, 255, 255, 0.55);
+    --accent: #818cf8;
+    --accent-2: #b24bff;
+    --radius: 16px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--text);
+    line-height: 1.65;
+    padding: 48px 20px 96px;
+  }
+
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  header {
+    margin-bottom: 40px;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: .8rem;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1.2;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .updated {
+    margin-top: 14px;
+    font-size: .82rem;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .intro {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 36px;
+    color: var(--muted);
+    font-size: .92rem;
+  }
+
+  section {
+    margin-bottom: 30px;
+  }
+
+  h2 {
+    font-size: 1.18rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  h2 .num {
+    font-family: var(--mono);
+    font-size: .8rem;
+    color: var(--accent);
+  }
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 18px 0 8px;
+    color: var(--text);
+  }
+
+  p {
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+
+  p+p {
+    margin-top: -4px;
+  }
+
+  ul {
+    margin: 0 0 12px 22px;
+  }
+
+  li {
+    margin-bottom: 6px;
+  }
+
+  strong {
+    color: #fff;
+    font-weight: 700;
+  }
+
+  a {
+    color: var(--accent);
+  }
+
+  .callout {
+    background: rgba(255, 176, 0, 0.08);
+    border: 1px solid rgba(255, 176, 0, 0.25);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: .9rem;
+    color: #ffd964;
+  }
+
+  .placeholder {
+    color: #ffb300;
+    font-family: var(--mono);
+  }
+
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: .82rem;
+    color: var(--muted);
+    text-align: center;
+  }
+</style>
+<div class="wrap">
+
+  <header>
+    <div class="logo">Alfred</div>
+    <h1>Conditions générales d'utilisation</h1>
+    <div class="updated">Dernière mise à jour : 13 juin 2026</div>
+  </header>
+
+  <div class="intro">
+    Les présentes conditions générales d'utilisation (les « <strong>Conditions</strong> ») encadrent
+    l'accès et l'usage de <strong>Alfred</strong>, outil personnel de prévisionnel budgétaire.
+    En utilisant Alfred, vous reconnaissez avoir lu, compris et accepté l'intégralité des Conditions.
+    Si vous n'acceptez pas ces Conditions, n'utilisez pas le service.
+  </div>
+
+  <section>
+    <h2><span class="num">1.</span> Objet</h2>
+    <p>
+      Alfred est une application web personnelle permettant de visualiser, estimer et anticiper
+      un budget mensuel à partir de données financières détenues par l'utilisateur. Les Conditions
+      définissent les modalités d'accès et d'utilisation du service, ainsi que les droits et
+      obligations de chacun.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">2.</span> Présentation du service</h2>
+    <p>Alfred met à disposition, à titre indicatif, les fonctionnalités suivantes :</p>
+    <ul>
+      <li>suivi du budget disponible et des transactions du mois ;</li>
+      <li>prévisionnel des charges planifiées et des soldes futurs ;</li>
+      <li>estimation de la capacité de dépense quotidienne (« météo » budgétaire, objectif de dépense/jour) ;</li>
+      <li>connexion optionnelle à un compte bancaire via un prestataire d'agrégation (Open Banking / DSP2) ;</li>
+      <li>messages d'analyse générés par une intelligence artificielle ;</li>
+      <li>alerte optionnelle d'un proche par email (fonction « Le&nbsp;Mammouth »).</li>
+    </ul>
+    <p>
+      Alfred s'appuie sur l'environnement Google&nbsp;(Google&nbsp;Sheets, Google&nbsp;Apps&nbsp;Script). Un compte
+      Google est nécessaire pour utiliser le service.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">3.</span> Acceptation et évolution des Conditions</h2>
+    <p>
+      L'utilisation d'Alfred vaut acceptation sans réserve des présentes Conditions. L'éditeur se
+      réserve le droit de les modifier à tout moment. La version applicable est celle en vigueur à
+      la date de votre utilisation. Il vous appartient de consulter régulièrement cette page.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">4.</span> Accès au service</h2>
+    <p>
+      L'accès à Alfred requiert un compte Google valide et la configuration d'un classeur
+      Google&nbsp;Sheets personnel servant de base de données. Chaque utilisateur opère sur son propre
+      classeur : vos données budgétaires ne sont pas partagées avec les autres utilisateurs.
+    </p>
+    <p>
+      Vous êtes responsable de la confidentialité de vos identifiants Google et de toute activité
+      réalisée depuis votre compte.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">5.</span> Caractère informatif — absence de conseil financier</h2>
+    <div class="callout">
+      Alfred est un outil d'<strong>aide à la gestion personnelle</strong>. Les montants, prévisions,
+      estimations et messages affichés sont fournis à titre <strong>purement indicatif</strong> et ne
+      constituent en aucun cas un conseil financier, fiscal, comptable ou en investissement.
+    </div>
+    <p>
+      Les calculs reposent sur les données que vous saisissez ou importez et peuvent comporter des
+      approximations. Vous restez seul responsable de vos décisions financières.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">6.</span> Données personnelles et confidentialité</h2>
+
+    <h3>6.1 Hébergement de vos données</h3>
+    <p>
+      Vos données budgétaires (transactions, charges, soldes, préférences) sont stockées dans
+      <strong>votre propre classeur Google&nbsp;Sheets</strong> et dans les propriétés utilisateur
+      associées à votre compte Google. L'éditeur n'héberge pas de copie centralisée de ces données.
+    </p>
+
+    <h3>6.2 Connexion bancaire (Open Banking / DSP2)</h3>
+    <p>
+      La connexion d'un compte bancaire est <strong>optionnelle</strong> et s'effectue via un
+      prestataire de services d'information sur les comptes agréé (Open Banking, conformément à la
+      directive européenne DSP2). Cet accès est en <strong>lecture seule</strong> : Alfred ne peut
+      pas initier de paiement ni modifier votre compte bancaire.
+    </p>
+    <p>
+      L'autorisation est accordée et révocable par vous, et reste soumise aux conditions et à la
+      politique de confidentialité du prestataire d'agrégation. Vous pouvez révoquer l'accès à tout
+      moment depuis votre banque ou depuis le prestataire.
+    </p>
+
+    <h3>6.3 Assistant intelligence artificielle</h3>
+    <p>
+      Lorsque vous utilisez la fonction d'analyse, un résumé non nominatif de votre situation
+      budgétaire (montants agrégés, jours restants) est transmis à un service d'intelligence
+      artificielle tiers (Google&nbsp;Gemini) afin de générer un message. Les messages produits sont
+      indicatifs et peuvent contenir des inexactitudes. Cette fonctionnalité est facultative.
+    </p>
+
+    <h3>6.4 Fonction « Le Mammouth »</h3>
+    <p>
+      Cette fonction <strong>optionnelle</strong> permet d'envoyer automatiquement un email à un
+      proche de votre choix lorsque votre situation budgétaire devient difficile. En l'activant :
+    </p>
+    <ul>
+      <li>vous renseignez vous-même le nom, l'adresse email et le message du destinataire ;</li>
+      <li>vous garantissez disposer du <strong>consentement</strong> de cette personne pour la contacter ;</li>
+      <li>l'email est envoyé depuis votre propre compte Google ;</li>
+      <li>vous êtes seul responsable du contenu du message transmis.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">7.</span> Obligations de l'utilisateur</h2>
+    <p>Vous vous engagez à :</p>
+    <ul>
+      <li>utiliser Alfred dans un cadre strictement personnel et licite ;</li>
+      <li>ne saisir que des données dont vous êtes titulaire ou autorisé à traiter ;</li>
+      <li>ne pas tenter de perturber, contourner ou détourner le fonctionnement du service ;</li>
+      <li>respecter les conditions d'utilisation des services tiers mobilisés (Google, prestataire bancaire, IA).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">8.</span> Disponibilité et évolutions</h2>
+    <p>
+      Alfred est fourni « <strong>en l'état</strong> » et « selon disponibilité », sans garantie de
+      continuité, d'exactitude ou d'absence d'erreur. Le service dépend de prestataires tiers
+      (Google, prestataire d'agrégation bancaire, fournisseur d'IA) dont les interruptions,
+      limitations ou évolutions peuvent affecter son fonctionnement.
+    </p>
+    <p>
+      L'éditeur peut faire évoluer, suspendre ou interrompre tout ou partie du service à tout
+      moment, sans préavis et sans indemnité.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">9.</span> Limitation de responsabilité</h2>
+    <p>
+      Dans les limites permises par la loi, l'éditeur ne saurait être tenu responsable des
+      dommages directs ou indirects résultant de l'utilisation ou de l'impossibilité d'utiliser
+      Alfred, notamment en cas de perte de données, d'inexactitude des estimations, de décision
+      financière prise sur la base des informations affichées, ou de défaillance d'un service tiers.
+    </p>
+    <p>
+      Vous utilisez Alfred sous votre seule et entière responsabilité.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">10.</span> Propriété intellectuelle</h2>
+    <p>
+      Le code, l'identité visuelle et les éléments composant Alfred demeurent la propriété de leur
+      auteur. Les présentes Conditions ne vous confèrent aucun droit de propriété sur le service.
+      Vos données budgétaires restent en revanche votre entière propriété.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">11.</span> Gratuité</h2>
+    <p>
+      Alfred est mis à disposition gratuitement, pour un usage personnel. Aucun paiement n'est requis
+      pour utiliser le service. Certaines fonctionnalités tierces (agrégation bancaire, IA) peuvent
+      être soumises aux quotas ou conditions de leurs fournisseurs respectifs.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">12.</span> Suppression et résiliation</h2>
+    <p>
+      Vous pouvez cesser d'utiliser Alfred à tout moment. La suppression de vos données s'effectue
+      en supprimant votre classeur Google&nbsp;Sheets et en révoquant les autorisations accordées à
+      l'application depuis votre compte Google. La révocation de l'accès bancaire s'effectue auprès
+      de votre banque ou du prestataire d'agrégation.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">13.</span> Droit applicable et juridiction</h2>
+    <p>
+      Les présentes Conditions sont régies par le droit français et s'interprètent conformément à
+      celui-ci, sous réserve des dispositions impératives applicables. Le traitement des données
+      personnelles s'inscrit dans le respect du Règlement général sur la protection des données
+      (RGPD). À défaut de résolution amiable, tout litige relève des juridictions françaises
+      compétentes.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="num">14.</span> Contact</h2>
+    <p>
+      Pour toute question relative aux présentes Conditions, vous pouvez contacter l'éditeur à
+      l'adresse suivante : <span class="placeholder">m.emmanuel.td@gmail.com</span>.
+    </p>
+  </section>
+
+  <footer>
+    Alfred — Conditions générales d'utilisation · Version du 13 juin 2026
+  </footer>
+
+</div>

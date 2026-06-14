@@ -1,0 +1,37 @@
+<!-- Modal transaction -->
+<div id="modal-transaction" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet modal-sheet--large">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="transaction-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title">Ajouter une transaction</span>
+      </div>
+    </div>
+
+    <form id="form-transaction">
+      <div class="form-group">
+        <label for="tx-amount">Montant (€)</label>
+        <input id="tx-amount" type="number" step="0.01" required>
+      </div>
+      <div class="form-group">
+        <label for="tx-date">Date</label>
+        <input id="tx-date" type="date" required>
+      </div>
+      <div class="form-group">
+        <label for="tx-label">Libellé</label>
+        <input id="tx-label" type="text" placeholder="Ikea, Leclerc, Retrait…" maxlength="80" required>
+      </div>
+      <div class="form-group">
+        <label for="tx-rule">Règle (facultatif)</label>
+        <select id="tx-rule"></select>
+      </div>
+      <div class="form-group">
+        <label for="tx-category">Catégorie (facultatif)</label>
+        <select id="tx-category"></select>
+      </div>
+      <button type="submit" id="btn-add" class="btn btn-primary">Ajouter</button>
+    </form>
+
+  </div>
+</div>

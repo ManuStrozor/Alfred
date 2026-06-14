@@ -1,0 +1,68 @@
+<section id="page-budget" class="page active">
+
+  <!-- Budget disponible -->
+  <div class="card" id="card-budget">
+    <div class="card-title">
+      Budget disponible <span id="current-month-label" class="month-label"></span>
+    </div>
+    <div id="budget-value" class="balance-hero">
+      <div class="skeleton skel-hero"></div>
+      <div class="skeleton skel-sub"></div>
+    </div>
+    <div id="meteo-line" class="meteo-line">
+      <div id="meteo-main" class="meteo-main">
+        <span id="meteo-icon"  class="meteo-icon"></span>
+        <span id="meteo-label" class="meteo-label"></span>
+        <span id="meteo-marge" class="meteo-marge"></span>
+      </div>
+      <div id="meteo-jours" class="meteo-jours"></div>
+    </div>
+    <div id="goal-line" class="goal-line"></div>
+  </div>
+
+  <!-- Comptes Enable Banking supplémentaires (config via Menu › Comptes) -->
+  <div id="linked-account-cards" style="display:flex;flex-wrap:wrap;gap:20px;"></div>
+
+  <!-- Transactions récentes -->
+  <div class="card" id="card-recent-trans">
+    <div class="card-title">Transactions récentes</div>
+    <ul class="month-trans-list" id="recent-trans-list">
+      <li class="skeleton skel-box"></li>
+    </ul>
+    <button id="btn-show-all-trans" class="show-all-btn">Tout afficher</button>
+  </div>
+
+  <!-- Donut chart — répartition budgétaire -->
+  <div class="card">
+    <div class="card-title">Répartition du budget</div>
+    <div class="donut-wrap">
+      <svg class="donut-svg" viewBox="0 0 200 200" id="donut-svg">
+        <!-- track -->
+        <circle class="donut-track" cx="100" cy="100" r="70"/>
+        <!-- segments (filled by JS) -->
+        <g id="donut-segments" transform="rotate(-90 100 100)"></g>
+        <!-- centre -->
+        <text id="donut-center-val"
+          x="100" y="90"
+          text-anchor="middle"
+          font-size="17" font-weight="800"
+          fill="var(--clr-text)"></text>
+        <text id="donut-center-pct"
+          x="100" y="107"
+          text-anchor="middle"
+          font-size="11" font-weight="700"
+          fill="rgba(var(--surface-rgb),0.6)"></text>
+        <text id="donut-center-lbl"
+          x="100" y="121"
+          text-anchor="middle"
+          font-size="9"
+          fill="rgba(var(--surface-rgb),0.4)"></text>
+      </svg>
+      <div class="donut-legend" id="donut-legend">
+        <div class="skeleton skel-box"></div>
+      </div>
+    </div>
+    <button id="btn-see-charges" class="show-all-btn">Voir les charges →</button>
+  </div>
+
+</section>

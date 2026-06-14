@@ -1,0 +1,54 @@
+<!-- Modal sous-sous-menu — Interface -->
+<div id="modal-interface" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="interface-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title">Apparence · Interface</span>
+      </div>
+    </div>
+
+    <ul class="action-list">
+      <li>
+        <div class="action-item action-item--static">
+          <span class="action-item-icon">🔢</span>
+          <div class="action-item-body">
+            <div class="action-item-label">Aperçu transactions</div>
+            <div class="action-item-desc">Nombre affiché sur la page Budget</div>
+          </div>
+          <div class="stepper">
+            <button id="btn-trans-limit-minus" class="stepper-btn" aria-label="−">−</button>
+            <span id="trans-limit-value" class="stepper-value">5</span>
+            <button id="btn-trans-limit-plus" class="stepper-btn" aria-label="+">+</button>
+          </div>
+        </div>
+      </li>
+      <li>
+        <div class="action-item">
+          <span class="action-item-icon">🏷️</span>
+          <div class="action-item-body">
+            <div class="action-item-label">Masquer les libellés nav</div>
+            <div class="action-item-desc" id="nav-labels-desc">Affichés</div>
+          </div>
+          <button class="action-toggle" id="toggle-nav-labels-btn" type="button" aria-label="Basculer libellés nav bar">
+            <span class="toggle-circle"></span>
+          </button>
+        </div>
+      </li>
+      <li>
+        <div class="action-item">
+          <span class="action-item-icon">🌅</span>
+          <div class="action-item-body">
+            <div class="action-item-label">Désactiver le Splash</div>
+            <div class="action-item-desc" id="splash-desc">Activé</div>
+          </div>
+          <button class="action-toggle" id="toggle-splash-btn" type="button" aria-label="Basculer splash">
+            <span class="toggle-circle"></span>
+          </button>
+        </div>
+      </li>
+    </ul>
+
+  </div>
+</div>

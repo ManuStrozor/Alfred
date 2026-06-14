@@ -1,0 +1,84 @@
+<!-- Modal add/edit ligne Prevs -->
+<div id="modal-prev-line" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="prev-line-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title" id="prev-line-title">Ajouter une charge</span>
+      </div>
+    </div>
+
+    <form id="form-prev-line" autocomplete="off">
+
+      <!-- Libellé -->
+      <div class="form-group">
+        <label for="pl-label">Libellé</label>
+        <input id="pl-label" type="text" class="form-input" placeholder="Netflix, Loyer, Salaire…">
+      </div>
+
+      <!-- Montant + signe -->
+      <div class="form-group">
+        <label>Montant</label>
+        <div class="pl-amount-row">
+          <button id="pl-sign-btn" class="pl-sign-btn" type="button" aria-label="Basculer signe">−</button>
+          <input id="pl-amount" type="number" step="0.01" min="0" class="form-input" placeholder="0.00">
+        </div>
+      </div>
+
+      <!-- Type -->
+      <div class="form-group">
+        <label for="pl-type">Type (compte / catégorie)</label>
+        <select id="pl-type" class="form-input">
+          <option value="">— aucun —</option>
+        </select>
+      </div>
+
+      <!-- Règle -->
+      <div class="form-group">
+        <label>Règle budgétaire</label>
+        <div class="pl-rule-pills" id="pl-rule-pills">
+          <button type="button" class="pl-rule-pill is-active" data-rule="">—</button>
+          <button type="button" class="pl-rule-pill" data-rule="Besoins">Besoins</button>
+          <button type="button" class="pl-rule-pill" data-rule="Envies">Envies</button>
+          <button type="button" class="pl-rule-pill" data-rule="Epargne">Épargne</button>
+          <button type="button" class="pl-rule-pill" data-rule="Dette">Dette</button>
+        </div>
+      </div>
+
+      <!-- Période -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="pl-start">Début</label>
+          <input id="pl-start" type="month" class="form-input">
+        </div>
+        <div class="form-group">
+          <label for="pl-end">Fin <span class="label-hint">(optionnel)</span></label>
+          <input id="pl-end" type="month" class="form-input">
+        </div>
+      </div>
+
+      <!-- Mois de récurrence -->
+      <div class="form-group">
+        <label>Récurrence <span class="label-hint">(vide = tous les mois)</span></label>
+        <div class="pl-month-pills" id="pl-months-pills">
+          <button type="button" class="pl-month-pill" data-month="1">Jan</button>
+          <button type="button" class="pl-month-pill" data-month="2">Fév</button>
+          <button type="button" class="pl-month-pill" data-month="3">Mar</button>
+          <button type="button" class="pl-month-pill" data-month="4">Avr</button>
+          <button type="button" class="pl-month-pill" data-month="5">Mai</button>
+          <button type="button" class="pl-month-pill" data-month="6">Jun</button>
+          <button type="button" class="pl-month-pill" data-month="7">Jul</button>
+          <button type="button" class="pl-month-pill" data-month="8">Aoû</button>
+          <button type="button" class="pl-month-pill" data-month="9">Sep</button>
+          <button type="button" class="pl-month-pill" data-month="10">Oct</button>
+          <button type="button" class="pl-month-pill" data-month="11">Nov</button>
+          <button type="button" class="pl-month-pill" data-month="12">Déc</button>
+        </div>
+      </div>
+
+      <button id="btn-save-prev" type="submit" class="btn-primary">Enregistrer</button>
+
+    </form>
+  </div>
+</div>

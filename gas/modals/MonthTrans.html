@@ -1,0 +1,56 @@
+<!-- Modal transactions du mois -->
+<div id="modal-month-trans" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet modal-sheet--large">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="month-trans-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title" id="month-trans-title">Transactions</span>
+        <button id="btn-mt-filter" class="charges-filter-btn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+          <span id="mt-filter-count-badge" class="filter-count-badge"></span>
+        </button>
+        <button id="btn-add-trans" class="btn-pill" type="button">＋ Ajouter</button>
+      </div>
+    </div>
+
+    <!-- Panneau de filtres -->
+    <div id="mt-filter-panel" class="charges-filter-panel">
+      <div class="filter-row">
+        <div class="filter-field">
+          <label class="filter-field-label">Règle</label>
+          <div class="filter-rule-pills" id="mt-rule-pills">
+            <button type="button" class="filter-rule-pill is-active" data-rule="">Tous</button>
+            <button type="button" class="filter-rule-pill" data-rule="Besoins">Besoins</button>
+            <button type="button" class="filter-rule-pill" data-rule="Envies">Envies</button>
+            <button type="button" class="filter-rule-pill" data-rule="Epargne">Épargne</button>
+            <button type="button" class="filter-rule-pill" data-rule="Dette">Dette</button>
+          </div>
+        </div>
+        <div class="filter-field">
+          <label class="filter-field-label">Catégorie</label>
+          <select id="mt-filter-cat" class="form-input"></select>
+        </div>
+      </div>
+      <div class="filter-actions">
+        <button id="btn-mt-filter-reset" class="btn-secondary-sm" type="button">Réinitialiser</button>
+        <button id="btn-mt-filter-apply" class="btn-primary" type="button">Appliquer</button>
+      </div>
+    </div>
+
+    <!-- Chips filtres actifs -->
+    <div id="mt-filter-chips" class="filter-chips"></div>
+
+    <!-- Résumé -->
+    <div id="mt-summary" class="charges-summary">
+      <span class="charges-sum-pos"><span id="mt-sum-pos"></span> entrées</span>
+      <span class="charges-sum-dot">·</span>
+      <span class="charges-sum-neg"><span id="mt-sum-neg"></span> sorties</span>
+    </div>
+
+    <ul class="month-trans-list" id="month-trans-list"></ul>
+
+    <button id="btn-import-revolut" class="show-all-btn">Importer depuis Revolut</button>
+
+  </div>
+</div>

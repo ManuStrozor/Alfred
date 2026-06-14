@@ -1,0 +1,90 @@
+<script>
+    'use strict';
+
+    const $ = id => document.getElementById(id);
+    const $All = cls => document.querySelectorAll(cls);
+
+    /* ══ État global ══════════════════════════════════════════════════
+     window.ALFRED_PREFS est injecté par doGet (UserProperties).
+     hideAmounts n'est PAS persisté : repart à false au reload.      */
+    const STATE = {
+        ...window.ALFRED_PREFS,
+        hideAmounts: false,
+    };
+    const TRANS_LIMIT = { MIN: 1, MAX: 5 };
+    const DAILY_GOAL  = { MIN: 0, MAX: Infinity, STEP: 1 }; // objectif dépense/jour (€)
+    const savedTab = localStorage.getItem('alfred_tab');
+
+    const _toast = {
+        GAP: 280,   // ≥ transition opacity du CSS (.25s)
+        queue: [],
+        busy: false,
+    };
+
+    const navBtns = $All('.nav-btn');
+
+    // mois du prévisionnel (courant + futurs + archivés)
+    let allMonths = [];
+    // nom du compte CSL (configuré dans les props)
+    let cslName = '';
+
+    const _meteo = {
+        ratio: null, weather: null,
+        budget: 0, budgetInit: 0
+    };
+    // dernières données reçues (re-render hideAmounts)
+    const _cache = { cur: null, rules: null, props: null };
+
+    /* ── état Transactions & Tâches ── */
+    const _trans = { items: [], editingRow: null };
+
+    const WEATHER = [
+        { max: 0, icon: '⛈️', label: 'Tempête', color: 'var(--clr-danger)' },
+        { max: 0.2, icon: '🌧️', label: 'Orage', color: 'var(--neon-orange)' },
+        { max: 0.5, icon: '🌦️', label: 'Pluie', color: '#ffb300' },
+        { max: 0.8, icon: '⛅', label: 'Éclarcie', color: 'var(--neon-blue)' },
+        { max: 1.1, icon: '🌤️', label: 'Soleil', color: 'var(--neon-green)' },
+        { max: Infinity, icon: '☀️', label: 'Grand soleil', color: '#e5b13d' }
+    ];
+
+    const RULE_COLORS = {
+        Besoins: 'var(--neon-blue)',
+        Envies: 'var(--neon-yellow)',
+        Epargne: 'var(--neon-green)',
+    };
+
+    const MOIS = [
+        'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
+        'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'
+    ];
+
+    const _modal = {
+        stack: [],
+        ALL: [
+            'meteo', 'month-trans',
+            'menu', 'appearance',
+            'connect', 'accounts', 'transaction',
+            'payday', 'props', 'prev-line', 'charges',
+            'taches', 'outils', 'comptes',
+            'parametres', 'confidentialite',
+            'interface', 'systeme', 'profil'
+        ],
+    };
+
+    const _swipe = {
+        PX: 96,
+        row: null,   // ligne actuellement révélée
+    };
+
+    let _geminiDone = false;
+
+    const _charges = {
+        lines: [],
+        types: [],
+        filters: { month: '', type: '', rule: '' },
+        loaded: false,
+        editingRow: null,
+        sign: -1,   // -1 = dépense, +1 = revenu
+    };
+
+</script>

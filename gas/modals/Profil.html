@@ -1,0 +1,63 @@
+<!-- Modal sous-menu — Profil -->
+<div id="modal-profil" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="profil-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title">Paramètres · Profil</span>
+      </div>
+    </div>
+
+    <ul class="action-list">
+      <li>
+        <div class="action-item action-item--static">
+          <span class="action-item-icon">🎯</span>
+          <div class="action-item-body">
+            <div class="action-item-label">Objectif de dépense / jour</div>
+            <div class="action-item-desc">0 € = désactivé</div>
+          </div>
+          <div class="stepper">
+            <button id="btn-goal-minus" class="stepper-btn" aria-label="−">−</button>
+            <span id="goal-value" class="stepper-value">0 €</span>
+            <button id="btn-goal-plus" class="stepper-btn" aria-label="+">+</button>
+          </div>
+        </div>
+      </li>
+
+      <!-- Le Mammouth : prévenir un proche en cas de mois difficile -->
+      <li>
+        <div class="action-item action-item--static">
+          <span class="action-item-icon">🦣</span>
+          <div class="action-item-body">
+            <div class="action-item-label">Le Mammouth</div>
+            <div class="action-item-desc" id="mammoth-desc">Désactivé</div>
+          </div>
+          <button class="action-toggle" id="toggle-mammoth-btn" type="button" aria-label="Activer Le Mammouth">
+            <span class="toggle-circle"></span>
+          </button>
+        </div>
+      </li>
+    </ul>
+
+    <div id="mammoth-fields" class="mammoth-fields">
+      <p class="mammoth-hint">
+        Un proche (parent, conjoint, ami) prévenu par email lorsque le mois devient
+        difficile (météo Orage). Une seule alerte par épisode.
+      </p>
+      <div class="form-group">
+        <label for="mammoth-name">Nom du Mammouth</label>
+        <input id="mammoth-name" type="text" class="form-input" placeholder="Camille" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="mammoth-email">Email du Mammouth</label>
+        <input id="mammoth-email" type="email" class="form-input" placeholder="camille@exemple.fr" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="mammoth-message">Message (laisser vide pour le message par défaut)</label>
+        <textarea id="mammoth-message" class="form-input" rows="4" placeholder="Coucou, le mois est un peu serré…"></textarea>
+      </div>
+    </div>
+
+  </div>
+</div>

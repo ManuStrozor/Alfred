@@ -1,0 +1,84 @@
+<script>
+    'use strict';
+
+    /* ══ Utilitaires ═══════════════════════════════════════════════════
+     Fonctions pures : formatage, échappement, erreurs GAS.           */
+
+    function fmt(v, compact = false) {
+        if (v === null) return '—';
+        if (STATE.hideAmounts) return compact ? '•••' : '••••• €';
+        const opts = compact
+            ? { maximumFractionDigits: 0 }
+            : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+        return new Intl.NumberFormat('fr-FR', opts).format(v) + (compact ? '' : ' €');
+    }
+
+    function escHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function cleanTitle(title) {
+        return title.replace(/\s*\[#[0-9A-Z]{6}\]\s*$/, '').trim();
+    }
+
+    /** Retourne le label court du mois (ex: "06/2026" → "Juin"). */
+    function fmtMonth(mmYyyy) {
+        const mm = mmYyyy.split('/')[0];
+        return MOIS[parseInt(mm, 10) - 1] ?? mmYyyy;
+    }
+
+    function _typewrite(el, text, onDone, speed = 28) {
+        let i = 0;
+        const tick = () => {
+            if (i < text.length) { el.textContent += text[i++]; setTimeout(tick, speed); }
+            else onDone?.();
+        };
+        tick();
+    }
+
+    /* ── Utilitaires date (mois absolu) ── */
+    function _absM(year, month0) { return year * 12 + month0; }
+
+    function _parsePrevDate(mmyyyy) {
+        if (!mmyyyy || !/^\d{2}\/\d{4}$/.test(mmyyyy)) return null;
+        const mm = +mmyyyy.slice(0, 2), yyyy = +mmyyyy.slice(3);
+        return _absM(yyyy, mm - 1);
+    }
+
+    function _absToMmYyyy(abs) {
+        return String(abs % 12 + 1).padStart(2, '0') + '/' + Math.floor(abs / 12);
+    }
+
+    function _absToLabel(abs) {
+        return MOIS[abs % 12] + ' ' + Math.floor(abs / 12);
+    }
+
+    function runner(scope, onSuccess, onFailure, duration) {
+        let r = google.script.run;
+        if (onSuccess) r = r.withSuccessHandler(onSuccess);
+        r = r.withFailureHandler(err => {
+            if (onFailure) onFailure(err);
+            showToast('❌ ' + scope + (err?.message ? ' : ' + err.message : ''), duration);
+        });
+        return r;
+    }
+
+    /** Injecte un skeleton de chargement. kind : 'box' (défaut) | 'li' (dans un <ul>) | 'hero'. */
+    function _showSkeleton(id, kind = 'box') {
+        $(id).innerHTML = kind === 'hero' ? '<div class="skeleton skel-hero"></div><div class="skeleton skel-sub"></div>'
+                        : kind === 'li'   ? '<li class="skeleton skel-box"></li>'
+                                          : '<div class="skeleton skel-box"></div>';
+    }
+
+    /* ── Spinner logo (v-draw) — tracés validés (cf. preview/spinner.html) ── */
+    const _SPIN_MARK = "M 42 68 C 48 55 51 44 60 35 C 68 43 71 52 73 60 C 69 83 36 67 30 95";
+    const _SPIN_SHIELD = "M 23 84 C 17 69 10 48 14 27 C 28 23 48 20 60 10 C 73 20 90 23 107 27 C 109 48 105 74 91 94 L 79 71 L 91 94 C 81 108 72 112 60 118 C 50 114 44 109 38 104";
+    function logoSpinner(size = 20) {
+        return `<svg class="logo-spin" viewBox="0 0 120 128" width="${size}" height="${size}" aria-hidden="true">`
+            + `<path class="track" d="${_SPIN_MARK}"/><path class="track" d="${_SPIN_SHIELD}"/>`
+            + `<path class="run" pathLength="100" d="${_SPIN_MARK}"/><path class="run" pathLength="100" d="${_SPIN_SHIELD}"/>`
+            + `</svg>`;
+    }
+</script>

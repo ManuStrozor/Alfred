@@ -1,0 +1,56 @@
+name: Deploy to Google Apps Script (dev)
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Check if Alfred.js was modified
+        id: check
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q '^gas/Alfred\.js$'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-node@v5
+        if: steps.check.outputs.changed == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+        if: steps.check.outputs.changed == 'true'
+
+      - run: npm test
+        if: steps.check.outputs.changed == 'true'
+
+      - name: Tests skipped (Alfred.js inchangé)
+        if: steps.check.outputs.changed == 'false'
+        run: echo "✅ Alfred.js non modifié — tests Jest ignorés."
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Write clasp credentials
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      - name: Push to Google Apps Script
+        run: clasp push --force
+
+      - name: Deploy new version
+        run: clasp deploy --deploymentId "${{ vars.DEPLOY_ID }}" --description "dev"

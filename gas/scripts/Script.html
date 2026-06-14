@@ -1,0 +1,1724 @@
+<script>
+  'use strict';
+
+  /* ══ Toast ═════════════════════════════════════════════════════════
+     File d'attente : les toasts s'affichent séquentiellement.       */
+  function showToast(msg, duration = 3000) {
+    _toast.queue.push({ msg, duration });
+    _drainToast();
+  }
+
+  function _drainToast() {
+    if (_toast.busy || !_toast.queue.length) return;
+    _toast.busy = true;
+    const { msg, duration } = _toast.queue.shift();
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(_ => {
+      el.classList.remove('show');
+      setTimeout(_ => { _toast.busy = false; _drainToast(); }, _toast.GAP);
+    }, duration);
+  }
+
+  /* ══ Navigation ════════════════════════════════════════════════════
+     Commute entre les pages, charge les données au premier accès.   */
+  /** Affichage visuel de la page — sans toucher à l'historique. */
+  function _showPage(target) {
+    navBtns.forEach(b => b.classList.toggle('active', b.dataset.page === target));
+    $All('.page').forEach(p => p.classList.remove('active'));
+    $('page-' + target).classList.add('active');
+    localStorage.setItem('alfred_tab', target);
+  }
+
+  function navigateTo(target) {
+    if (target === 'actions') { _openModal('menu'); return; }
+    if (_swipe.row) { _swipe.row.classList.remove('is-revealed'); _swipe.row = null; }
+
+    if (target === 'budget') {
+      // Si on est sur une page secondaire, history.back() gère le retour
+      if (history.state?.page) { history.back(); return; }
+    } else {
+      // Pages secondaires : push depuis Budget, replace entre pages secondaires
+      if (history.state?.page) history.replaceState({ page: target }, '');
+      else                      history.pushState({ page: target }, '');
+    }
+    _showPage(target);
+  }
+  navBtns.forEach(btn => btn.addEventListener('click', _ => navigateTo(btn.dataset.page)));
+
+  /* ══ Budget ════════════════════════════════════════════════════════
+     Données forecast, météo journalière, donut de répartition.      */
+  function renderMeteo(budget, budgetInit, isCurrent) {
+    const el = $('meteo-line');
+    if (!isCurrent || budget === null || !budgetInit) {
+      el.classList.remove('is-visible');
+      $('goal-line').classList.remove('is-visible');
+      return;
+    }
+
+    // _meteo.budgetInit doit être assigné avant getDayMetrics (qui en dépend)
+    _meteo.budget      = budget;
+    _meteo.budgetInit  = budgetInit;
+    const { jr, rj } = getDayMetrics();
+    const margeJour   = budget / jr;
+    const ratio       = rj > 0 ? margeJour / rj : (margeJour < 0 ? -1 : 2);
+    const w           = WEATHER.find(e => ratio < e.max);
+    _meteo.ratio       = ratio;
+    _meteo.weather     = w;
+
+    $('meteo-icon').textContent  = w.icon;
+    $('meteo-label').textContent = w.label;
+    $('meteo-label').style.color = w.color;
+    $('meteo-marge').textContent = fmt(Math.round(margeJour * 100) / 100) + '/j';
+    $('meteo-marge').style.color = margeJour < 0 ? 'var(--clr-danger)' : w.color;
+    const s = jr > 1 ? 's' : '';
+    $('meteo-jours').textContent = `${jr} jour${s} restant${s}`;
+    el.classList.add('is-visible');
+    renderGoal(budget, jr);
+  }
+
+  /**
+   * Ligne « objectif de dépense/jour » sous la météo (card Budget).
+   * À `STATE.dailyGoal` €/jour, calcule l'autonomie (runway) du budget
+   * restant et indique si l'objectif tient jusqu'à la fin du mois.
+   */
+  function renderGoal(budget, jr) {
+    const el   = $('goal-line');
+    const goal = STATE.dailyGoal;
+    if (!goal || goal <= 0 || STATE.hideAmounts || budget <= 0) {
+      el.classList.remove('is-visible');
+      return;
+    }
+    const runway = Math.floor(budget / goal);
+    if (runway >= jr) {
+      el.textContent = `🎯 ${goal} €/j tenable jusqu'à la fin du mois`;
+      el.className   = 'goal-line is-visible ok';
+    } else {
+      const s = runway > 1 ? 's' : '';
+      el.textContent = `🎯 ${goal} €/j : budget épuisé dans ${runway} jour${s}`;
+      el.className   = 'goal-line is-visible warn';
+    }
+  }
+
+  /**
+   * Retourne les métriques quotidiennes du mois courant utilisées par météo / éval.
+   * `tomorrow=true` décale d'un jour pour les estimations "demain".
+   */
+   function getDayMetrics({ tomorrow = false } = {}) {
+    const [month, year] = allMonths[0].month.split('/').map(Number);
+    const fDate = new Date(year, month - 1, 1);
+    const today = new Date();
+    const now = fDate > today ? fDate : today;
+    const jdm = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const jr  = jdm - now.getDate() + 1 - (tomorrow ? 1 : 0);
+    const rj  = _meteo.budgetInit / jdm;
+    return { now, jdm, jr, rj };
+  }
+
+  function renderBalances(data) {
+    _cache.cur = data;
+    const hero = $('budget-value');
+    hero.className = 'balance-hero' + (data.budget !== null && data.budget < 0 ? ' negative' : '');
+    hero.innerHTML = fmt(data.budget);
+    renderMeteo(data.budget, data.budgetInit, data.isCurrent);
+  }
+
+  function applyForecast(data) {
+    allMonths    = data.months;
+    cslName      = data.cslName;
+    _trans.items = data.monthTransactions || [];
+    const cur = allMonths.find(m => m.isCurrent) || allMonths[0] || {};
+    const lbl = $('current-month-label');
+    lbl.textContent = cur.month || '';
+    lbl.className   = 'month-label' + (cur.isForecast ? ' is-forecast' : '');
+    $('forecast-period-label').textContent = 'sur ' + data.periodText;
+    $('month-trans-title').textContent     = 'Transactions · ' + lbl.textContent;
+    renderBalances(cur);
+    _renderTransList('recent-trans-list', STATE.transLimit);
+    renderForecast();
+    _maybeShowGemini();
+  }
+
+  function _maybeShowGemini() {
+    if (_geminiDone || $('splash')?.classList.contains('is-hidden')) return;
+    const GK = 'alfred_gemini_cache';
+    const local = (_ => { try { return JSON.parse(localStorage.getItem(GK) || 'null'); } catch (_) { return null; } })();
+    const clientKey = local?.key || null;
+
+    const onSuccess = data => {
+      if (!data || data.noKey || data.error) {
+        if (data?.error) showToast('⚠️ Gemini : ' + data.error, 5000);
+        _splashHideGemini();
+        return;
+      }
+      if (data.cached) {
+        if (local?.message) _splashShowInsight(local.message);
+        else _splashHideGemini();
+        return;
+      }
+      if (data.message) {
+        try { localStorage.setItem(GK, JSON.stringify({ key: data.key, message: data.message, ts: Date.now() })); } catch (_) { }
+        _splashShowInsight(data.message);
+      } else _splashHideGemini();
+    };
+
+    runner('Gemini', onSuccess, _splashHideGemini)
+    .getGeminiInsight(clientKey, WEATHER);
+  }
+
+
+  /* ══ Transactions ══════════════════════════════════════════════════
+     Rendu, CRUD et modal des transactions du mois courant.          */
+
+  function _transItemHtml(r) {
+    const sub = [r.rule, r.category].filter(Boolean).join(' · ') || '—';
+    // Lignes archivées (mois clôturé rouvert) : lecture seule, pas d'édition/suppression
+    return `<li class="month-trans-item" data-row="${r.row}"${r.archived ? ' data-archived="1"' : ''}>
+      <div class="trans-slider">
+        <div class="trans-main">
+          <span class="month-trans-date">${escHtml(r.date)}</span>
+          <div class="month-trans-body">
+            <span class="month-trans-label">${STATE.hideAmounts ? '•'.repeat(15) : escHtml(r.label)}</span>
+            <span class="month-trans-sub">${STATE.hideAmounts ? '••••• · •••••' : escHtml(sub)}</span>
+          </div>
+          <span class="month-trans-amount ${r.amount >= 0 ? 'positive' : 'negative'}">${fmt(r.amount)}</span>
+        </div>
+        ${r.archived ? '' : `<div class="trans-actions">
+          <button class="trans-edit"   type="button" aria-label="Modifier">✏️</button>
+          <button class="trans-delete" type="button" aria-label="Supprimer">🗑️</button>
+        </div>`}
+      </div>
+    </li>`;
+  }
+
+  function _renderTransList(listId, limit) {
+    const list = $(listId);
+    if (!_trans.items.length) {
+      list.innerHTML = '<li class="month-trans-empty">Aucune transaction ce mois</li>';
+      return;
+    }
+    const items = limit ? _trans.items.slice(0, limit) : _trans.items;
+    list.innerHTML = items.map(_transItemHtml).join('');
+    list.querySelectorAll('.month-trans-item:not([data-archived])').forEach(makeSwipeable);
+  }
+
+  /** Applique toutes les données initiales : forecast, donut, selects, tasks, prevs. */
+  function _applyAllData({ forecast, rules, options, savingsProps, shownAccounts, tasks, prevs }) {
+    if (savingsProps) _cache.props = savingsProps;
+    $('tx-rule').innerHTML = '<option value="">—</option>';
+    $('tx-category').innerHTML = '<option value="">—</option>';
+    options.rules.forEach(r      => $('tx-rule').appendChild(new Option(r, r)));
+    options.categories.forEach(c => $('tx-category').appendChild(new Option(c, c)));
+    renderDonut(rules);
+    applyForecast(forecast);
+
+    if (shownAccounts) _cache.balances = shownAccounts;
+    renderLinkedAccountCards(shownAccounts);
+
+    if (tasks)  renderTasks(tasks);
+    if (prevs) {
+      _charges.lines = prevs.lines;
+      _charges.types = prevs.types;
+      _charges.loaded = true;
+      if (!_charges.filters.month) _charges.filters.month = _absToMmYyyy(_curAbs());
+      renderPrevList();
+    }
+    _ptrFinish();
+  }
+
+  function renderLinkedAccountCards(accounts) {
+    const container = $('linked-account-cards');
+    container.innerHTML = '';
+    accounts.forEach(a => {
+      const card = document.createElement('div');
+      card.className = 'card card-account';
+      card.innerHTML = `
+        <div class="card-title">${escHtml(a.name || 'Compte')}</div>
+        <div class="account-name-label">${escHtml(a.currency || '')}</div>
+        <div class="balance-hero ${(a.balance !== null && a.balance < 0) ? 'negative' : ''}">
+          ${a.balance !== null ? fmt(a.balance) : '<span class="balance-na">—</span>'}
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  /** Applique le résultat d'un import Revolut. */
+  function _onImportSuccess(result) {
+    _applyAllData(result);
+    if (_modal.stack.includes('month-trans')) _renderMonthTrans();
+    showToast(result.imported === 0
+      ? 'Rien à importer'
+      : `✅ ${result.imported} transaction(s) Revolut importée(s)`);
+  }
+
+  function loadAppData() {
+    _showSkeleton('budget-value', 'hero');
+    $('meteo-line').classList.remove('is-visible');
+    _showSkeleton('recent-trans-list', 'li');
+    _showSkeleton('forecast-list', 'li');
+    _showSkeleton('charges-list');
+    _showSkeleton('task-list-container');
+    _resetDonut();
+
+    const onLoadError = _ => { $('budget-value').textContent = '—'; _ptrFinish(); };
+
+    if (STATE.autoImportRevolut) {
+      runner('Auto-import', _onImportSuccess, _ => {
+        runner('Chargement', _applyAllData, onLoadError).getAllData();
+      }).importRevolutTransactionsWeb();
+      return;
+    }
+
+    runner('Chargement', _applyAllData, onLoadError).getAllData();
+  }
+
+  /* ══ Donut chart ═══════════════════════════════════════════════════
+     Répartition budgétaire (Besoins/Envies/Épargne/Dette/Reste).   */
+  let _selectedRule = null;
+
+  function _donutSetCenter(r, total) {
+    const centerVal = $('donut-center-val');
+    centerVal.textContent = fmt(r.amount);
+    centerVal.setAttribute('fill', r.amount < 0 ? 'var(--clr-danger)' : 'var(--clr-text)');
+    $('donut-center-pct').textContent = (total > 0 ? Math.round(Math.abs(r.amount) / total * 100) : 0) + ' %';
+    $('donut-center-lbl').textContent = r.label;
+  }
+
+  /** Reflète _selectedRule (ou Reste) sur le centre, l'opacité des segments et la légende. */
+  function _applyDonutSelection() {
+    const rules = _cache.rules;
+    if (!rules) return;
+    const reste = rules.find(r => r.label === 'Reste');
+    const total = rules.filter(r => r.label !== 'Reste' && r.amount > 0)
+      .reduce((s, r) => s + r.amount, 0) + Math.max(0, reste ? reste.amount : 0);
+    const center = (_selectedRule && rules.find(r => r.label === _selectedRule)) || reste;
+    if (center) _donutSetCenter(center, total);
+    _applyDonutFocus(_selectedRule);
+    $All('#donut-legend .legend-item').forEach(i => i.classList.toggle('is-active', i.dataset.rule === _selectedRule));
+  }
+
+  function renderDonut(rules) {
+    _cache.rules = rules;
+    const segEl    = $('donut-segments');
+    const legendEl = $('donut-legend');
+
+    const R    = 70, CX = 100, CY = 100;
+    const CIRC = 2 * Math.PI * R;
+
+    const reste    = rules.find(r => r.label === 'Reste');
+    const spending = rules.filter(r => r.label !== 'Reste' && r.amount > 0);
+    const total    = spending.reduce((s, r) => s + r.amount, 0) + Math.max(0, reste ? reste.amount : 0);
+
+    if (total <= 0) {
+      _selectedRule = null;
+      segEl.innerHTML = '';
+      if (reste) _donutSetCenter(reste, total);
+      legendEl.innerHTML = '<div class="empty-state" style="padding:12px 0;font-size:.82rem;">Données indisponibles</div>';
+      return;
+    }
+
+    const allSegs = [...spending, ...(reste && reste.amount > 0 ? [reste] : [])];
+    let cumulative = 0;
+    segEl.innerHTML = allSegs.map(r => {
+      if (r.label == 'Reste') return '';
+      const color = RULE_COLORS[r.label] || 'var(--clr-muted)';
+      const len   = (r.amount / total) * CIRC;
+      const seg   = `<circle class="donut-seg" data-rule="${r.label}" cx="${CX}" cy="${CY}" r="${R}" fill="none"
+        stroke="${color}" stroke-width="26"
+        stroke-dasharray="${len.toFixed(2)} ${CIRC.toFixed(2)}"
+        stroke-dashoffset="${(-cumulative).toFixed(2)}"
+        style="filter:drop-shadow(0 0 6px #fff3);transition:opacity .2s,filter .2s;"/>`;
+      cumulative += len;
+      return seg;
+    }).join('');
+
+    // Légende (clic géré par délégation, listener unique attaché à l'init)
+    legendEl.innerHTML = rules.map(r => {
+      if (r.label == 'Reste') return '';
+      const color = RULE_COLORS[r.label] || 'var(--clr-muted)';
+      const isNeg = r.amount < 0;
+      return `<div class="legend-item" data-rule="${r.label}" style="cursor:pointer;">
+        <div class="legend-dot" style="background:${color};box-shadow:0 0 5px ${color};"></div>
+        <span class="legend-label">${r.label}</span>
+        <span class="legend-amount" style="color:${isNeg ? 'var(--clr-danger)' : 'var(--clr-text)'};">${fmt(r.amount)}</span>
+      </div>`;
+    }).join('');
+
+    // La sélection survit au re-render ; réinitialisée si la règle a disparu des données
+    if (_selectedRule && !rules.some(r => r.label === _selectedRule)) _selectedRule = null;
+    _applyDonutSelection();
+  }
+
+  // Clic légende délégué (attaché une seule fois) : toggle de la règle sélectionnée
+  $('donut-legend').addEventListener('click', e => {
+    const item = e.target.closest('.legend-item');
+    if (!item) return;
+    _selectedRule = _selectedRule === item.dataset.rule ? null : item.dataset.rule;
+    _applyDonutSelection();
+  });
+
+  // Lien depuis la card donut vers le modal Charges
+  $('btn-see-charges').addEventListener('click', _ => _openModal('charges'));
+  _bindModal('charges');
+
+  function _applyDonutFocus(selectedRule) {
+    $All('#donut-segments .donut-seg').forEach(seg => {
+      const isSelected = !selectedRule || seg.dataset.rule === selectedRule;
+      seg.style.opacity = isSelected ? '1' : '0.18';
+    });
+  }
+
+  /** Vide le donut (segments + centre) et affiche un skeleton dans la légende. */
+  function _resetDonut() {
+    $('donut-segments').innerHTML = '';
+    $('donut-center-val').innerHTML = '';
+    $('donut-center-pct').innerHTML = '';
+    $('donut-center-lbl').innerHTML = '';
+    _showSkeleton('donut-legend');
+  }
+
+  function loadBudgetRules() {
+    _resetDonut();
+    runner('Budget-rules', renderDonut, _ => {
+      $('donut-legend').innerHTML = '<div class="empty-state" style="padding:12px 0;font-size:.82rem;">—</div>';
+    }).getBudgetRules();
+  }
+
+  /* ══ Tâches Revolut ════════════════════════════════════════════════
+     Lecture et completion des tâches Google Tasks liées à Revolut.  */
+  function _updateTaskBadge(n) {
+    ['menu-task-badge', 'nav-task-badge'].forEach(id => {
+      const b = $(id);
+      if (!b) return;
+      b.textContent = n;
+      b.classList.toggle('is-visible', n > 0);
+    });
+  }
+
+  function renderTasks(tasks) {
+    _updateTaskBadge(tasks?.length || 0);
+    const container = $('task-list-container');
+    if (!tasks?.length) {
+      container.innerHTML = '<div class="empty-state">🎉 Aucune tâche Revolut en attente</div>';
+      return;
+    }
+    container.innerHTML = '<div class="task-list">'
+      + tasks.map(t => `
+        <div class="task-item" id="task-${t.id}">
+          <input type="checkbox" id="chk-${t.id}" onchange="onCheckTask('${t.id}', this)">
+          <div class="task-info">
+            <div class="task-title">${escHtml(cleanTitle(t.title))}</div>
+            ${t.notes ? `<div class="task-notes">${escHtml(t.notes)}</div>` : ''}
+          </div>
+        </div>`).join('')
+      + '</div>';
+  }
+
+  function onCheckTask(taskId, checkbox) {
+    checkbox.disabled = true;
+    const item = $('task-' + taskId);
+    item.style.opacity = '.45';
+    runner('Tasks', tasks => {
+      showToast('✅ Tâche marquée terminée');
+      renderTasks(tasks);
+    }, _ => {
+      checkbox.checked  = false;
+      checkbox.disabled = false;
+      item.style.opacity = '';
+    }).completeTask(taskId);
+  }
+
+  /* ══ Modal ═════════════════════════════════════════════════════════
+     Pile de modaux full-page (translateX). history.state.stack
+     synchronise la pile avec le bouton Back Android.                */
+  function _showStack() {
+    document.activeElement.blur(); // ferme le clavier mobile
+    _modal.ALL.forEach(k => $('modal-' + k).classList.remove('open', 'pushed'));
+    document.body.classList.toggle('modal-active', _modal.stack.length > 0);
+    document.body.style.overflow = _modal.stack.length > 0 ? 'hidden' : '';
+    _modal.stack.forEach((name, i) => {
+      $('modal-' + name).classList.add(i === _modal.stack.length - 1 ? 'open' : 'pushed');
+    });
+    $('btn-nav-menu').classList.toggle('active', _modal.stack.at(-1) === 'menu');
+  }
+
+  function _openModal(name) {
+    _modal.stack = [..._modal.stack, name];
+    history.pushState({ stack: _modal.stack }, '');
+    _showStack();
+  }
+
+  function closeAll() {
+    if (_modal.stack.length > 0) history.go(-_modal.stack.length);
+  }
+
+  function _bindModal(name) {
+    $(name + '-back').addEventListener('click', _ => history.back());
+  }
+
+  // Bouton Back Android / history.back() / history.go(-N) → popstate
+  window.addEventListener('popstate', e => {
+    if (_swipe.row) { _swipe.row.classList.remove('is-revealed'); _swipe.row = null; }
+    if ('stack' in (e.state || {})) {
+      // État modal : mettre à jour la pile
+      _modal.stack = e.state.stack || [];
+      _showStack();
+    } else {
+      // État page (ou état initial) : fermer les modaux + afficher la bonne page
+      _modal.stack = [];
+      _showStack();
+      _showPage(e.state?.page || 'budget');
+    }
+  });
+
+  /* ══ Swipe-to-reveal (transactions & charges) ═══════════════════
+     Geste horizontal → révèle les boutons Edit / Delete.           */
+  function _hideRevealedRow() {
+    if (!_swipe.row) return;
+    _swipe.row.classList.remove('is-revealed');
+    _swipe.row = null;
+  }
+
+  function _revealRow(row) {
+    if (_swipe.row === row) return;
+    if (_swipe.row) _swipe.row.classList.remove('is-revealed');
+    row.classList.add('is-revealed');
+    _swipe.row = row;
+  }
+
+
+  function makeSwipeable(row, { onEdit, onDelete } = {}) {
+    const slider = row.querySelector('.trans-slider');
+    let startX = null, startY = null, dragging = false;
+
+    row.addEventListener('pointerdown', e => {
+      if (e.target.closest('.trans-actions')) return;
+      startX = e.clientX;
+      startY = e.clientY;
+      dragging = false;
+    });
+
+    row.addEventListener('pointermove', e => {
+      if (startX === null) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!dragging) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        if (Math.abs(dy) > Math.abs(dx)) { startX = null; return; }
+        dragging = true;
+        slider.style.transition = 'none';
+        row.setPointerCapture(e.pointerId);
+      }
+      const base = row.classList.contains('is-revealed') ? -_swipe.PX : 0;
+      slider.style.transform = `translateX(${Math.max(-_swipe.PX, Math.min(0, base + dx))}px)`;
+    });
+
+    const finish = e => {
+      if (startX === null) return;
+      const wasDragging = dragging;
+      const dx = e ? e.clientX - startX : 0;
+      startX = null; dragging = false;
+      slider.style.transition = '';
+      slider.style.transform = '';
+      if (!wasDragging) {
+        // Tap simple (pointerup, pas pointercancel) → bascule l'affichage des boutons
+        if (e) (row.classList.contains('is-revealed') ? _hideRevealedRow() : _revealRow(row));
+        return;
+      }
+      const base = row.classList.contains('is-revealed') ? -_swipe.PX : 0;
+      const final = Math.max(-_swipe.PX, Math.min(0, base + dx));
+      if (final < -_swipe.PX / 2) _revealRow(row);
+      else _hideRevealedRow();
+    };
+    row.addEventListener('pointerup',     finish);
+    row.addEventListener('pointercancel', _ => finish(null));
+
+    const onSuccess = forecast => {
+      applyForecast(forecast);
+      loadBudgetRules();
+      if (_modal.stack.includes('month-trans')) _renderMonthTrans();
+      showToast('✅ Transaction supprimée');
+    };
+
+    const rowIndex = parseInt(row.dataset.row, 10);
+    row.querySelector('.trans-edit').addEventListener('click', e => {
+      e.stopPropagation();
+      (onEdit ?? (_ => openEditTransaction(rowIndex)))();
+    });
+    row.querySelector('.trans-delete').addEventListener('click', e => {
+      e.stopPropagation();
+      (onDelete ?? (_ => runner('Suppression', onSuccess).deleteTransactionByRow(rowIndex)))();
+    });
+  }
+
+  function openEditTransaction(rowIndex) {
+    const tx = _trans.items.find(t => t.row === rowIndex);
+    if (!tx) return;
+    _trans.editingRow = rowIndex;
+    $('tx-amount').value   = tx.amount;
+    $('tx-date').value     = tx.isoDate;
+    $('tx-label').value    = tx.label === '—' ? '' : tx.label;
+    $('tx-rule').value     = tx.rule;
+    $('tx-category').value = tx.category;
+    $('btn-add').innerHTML = 'Enregistrer';
+    _openModal('transaction');
+  }
+
+  /* ── Toggle persisté (theme, hide-amounts, auto-import) ──────── */
+  function bindToggle({ btnId, labelId, stateKey, onLabel, offLabel, onChange, persist = true }) {
+    const upd = _ => {
+      const v = STATE[stateKey];
+      $(labelId).textContent = v ? onLabel : offLabel;
+      $(btnId).classList.toggle('is-on', v);
+    };
+    $(btnId).addEventListener('click', _ => {
+      const prev = STATE[stateKey];
+      STATE[stateKey] = !prev;
+      if (persist) {
+        runner(`Sauvegarde ${stateKey}`, null, _ => {
+          STATE[stateKey] = prev; // rollback : UI ↔ UserProperties restées cohérentes
+          upd();
+          onChange?.(STATE[stateKey]);
+        }).setUserPref(stateKey, STATE[stateKey]);
+      }
+      upd();
+      onChange?.(STATE[stateKey]);
+    });
+    upd();
+  }
+
+  /* ── Forecast (page Prévisionnel) ──────────────────────────── */
+  function renderForecast() {
+    $('forecast-csl-label').textContent = cslName || 'CSL';
+    let prevYear = null;
+    $('forecast-list').innerHTML = allMonths.map(m => {
+      const year = m.month.slice(-4);
+      const sep  = (prevYear !== null && year !== prevYear)
+        ? `<li class="forecast-year-sep">${year}</li>`
+        : '';
+      prevYear = year;
+      let cls = 'forecast-item';
+      if (m.isCurrent)             cls += ' is-current';
+      if (m.isArchived || m.isGap) cls += ' is-archived';
+      else if (m.isForecast)       cls += ' is-forecast';
+      return sep + `<li class="${cls}">
+        <span class="forecast-month">${escHtml(fmtMonth(m.month))}</span>
+        <span>${fmt(m.budget, true)}</span>
+        <span>${fmt(m.lep,    true)}</span>
+        <span>${fmt(m.la,     true)}</span>
+        <span>${fmt(m.csl,    true)}</span>
+      </li>`;
+    }).join('');
+  }
+
+  /* ── Météo modal ─────────────────────────────────────────────── */
+  function openMeteoModal() {
+    if (_meteo.weather === null) return;
+
+    // Pré-calcul (jours pour remonter au palier i sans rien dépenser)
+    const { now, jdm, jr, rj } = getDayMetrics();
+    const curIdx = WEATHER.indexOf(_meteo.weather);
+    const showDays = rj > 0 && curIdx < WEATHER.length - 1;
+
+    // Tableau des niveaux + jours inline pour les paliers supérieurs au courant
+    $('meteo-table').innerHTML = WEATHER.map((w, i) => {
+      const fromRatio = i === 0 ? -Infinity : WEATHER[i - 1].max;
+      const toRatio   = w.max;
+      const range = fromRatio === -Infinity ? '< 0 %'
+        : toRatio   === Infinity             ? '> ' + Math.round(fromRatio * 100) + ' %'
+        : Math.round(fromRatio * 100) + ' – ' + Math.round(toRatio * 100) + ' %';
+      const isCur = w === _meteo.weather;
+
+      let daysHtml = '';
+      if (showDays && i > curIdx) {
+        const L  = WEATHER[i - 1].max; // borne basse du palier
+        const d  = Math.ceil(jr - _meteo.budget / (L * rj));
+        const ok = isFinite(d) && d > 0 && d <= jr - 1;
+        daysHtml = `<span class="meteo-table-days${ok ? '' : ' is-unreachable'}">${ok ? (d > 1 ? 'dans ' + d + ' j' : 'demain') : '—'}</span>`;
+      }
+
+      return `<li class="meteo-table-row${isCur ? ' is-current' : ''}">
+        <span class="meteo-table-icon">${w.icon}</span>
+        <span class="meteo-table-label"${isCur ? ` style="color:${w.color}"` : ''}>${w.label}</span>
+        ${daysHtml}
+        <span class="meteo-table-range">${range}</span>
+      </li>`;
+    }).join('');
+
+    let ratioHtml = `Ratio actuel : <strong>${Math.round(_meteo.ratio * 100)} %</strong>`;
+    if (rj > 0 && _meteo.ratio >= 1) {
+      const maxSpend = Math.max(0, _meteo.budget - rj * (jr-1));
+      const date = now.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+      ratioHtml += ` | Dépense max ${date} : <strong>${fmt(maxSpend)}</strong>`;
+    }
+    $('meteo-modal-ratio').innerHTML = ratioHtml;
+
+    _openModal('meteo');
+  }
+
+  $('meteo-main').addEventListener('click', openMeteoModal);
+  _bindModal('meteo');
+
+  /* ── Transactions du mois modal ──────────────────────────────── */
+  const _mtFilters = { rule: '', cat: '' };
+
+  function _renderMonthTrans() {
+    const list = $('month-trans-list');
+    let items = _trans.items;
+
+    if (_mtFilters.rule) items = items.filter(t => t.rule     === _mtFilters.rule);
+    if (_mtFilters.cat)  items = items.filter(t => t.category === _mtFilters.cat);
+
+    // Summary
+    const pos = items.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+    const neg = items.filter(t => t.amount < 0).reduce((s, t) => s + t.amount, 0);
+    const sumEl = $('mt-summary');
+    sumEl.classList.toggle('is-visible', items.length > 0);
+    if (items.length) {
+      $('mt-sum-pos').textContent = pos ? fmt(pos) : '—';
+      $('mt-sum-neg').textContent = neg ? fmt(neg) : '—';
+    }
+
+    // Badge + chips
+    const activeCount = [_mtFilters.rule, _mtFilters.cat].filter(Boolean).length;
+    const badge = $('mt-filter-count-badge');
+    badge.classList.toggle('is-visible', activeCount > 0);
+    if (activeCount) badge.textContent = activeCount;
+    $('btn-mt-filter').classList.toggle('has-filters', activeCount > 0);
+    _renderMtChips();
+
+    if (!items.length) {
+      list.innerHTML = '<li class="month-trans-empty">Aucune transaction</li>';
+      return;
+    }
+    list.innerHTML = items.map(_transItemHtml).join('');
+    list.querySelectorAll('.month-trans-item:not([data-archived])').forEach(makeSwipeable);
+  }
+
+  /** Rend une barre de chips de filtre dans #wrapId. chips: [{key,label}]. onRemove(key) au clic ✕. */
+  function _renderChips(wrapId, chips, onRemove) {
+    const wrap = $(wrapId);
+    wrap.classList.toggle('is-visible', chips.length > 0);
+    wrap.innerHTML = chips.map(c =>
+      `<span class="filter-chip">${escHtml(c.label)}<button class="filter-chip-remove" data-key="${c.key}" type="button">✕</button></span>`
+    ).join('');
+    wrap.querySelectorAll('.filter-chip-remove').forEach(btn =>
+      btn.addEventListener('click', _ => onRemove(btn.dataset.key))
+    );
+  }
+
+  function _renderMtChips() {
+    const chips = [];
+    if (_mtFilters.rule) chips.push({ key: 'rule', label: _mtFilters.rule });
+    if (_mtFilters.cat)  chips.push({ key: 'cat',  label: _mtFilters.cat });
+    _renderChips('mt-filter-chips', chips, key => { _mtFilters[key] = ''; _renderMonthTrans(); });
+  }
+
+  function _syncMtFilterPanel() {
+    const presentRules = new Set(_trans.items.map(t => t.rule).filter(Boolean));
+    const presentCats  = new Set(_trans.items.map(t => t.category).filter(Boolean));
+
+    // Pills règle : désactiver celles sans transaction correspondante
+    $All('#mt-rule-pills .filter-rule-pill').forEach(b => {
+      const absent = b.dataset.rule && !presentRules.has(b.dataset.rule);
+      b.disabled = absent;
+      b.classList.toggle('is-active', b.dataset.rule === _mtFilters.rule);
+    });
+
+    // Select catégorie : reconstruire à chaque ouverture
+    const sel = $('mt-filter-cat');
+    sel.innerHTML = '<option value="">—</option>';
+    Array.from($('tx-category').options).forEach(o => {
+      if (!o.value) return;
+      const opt = new Option(o.text, o.value);
+      opt.disabled = !presentCats.has(o.value);
+      sel.appendChild(opt);
+    });
+    sel.value = _mtFilters.cat;
+  }
+
+  function openMonthTransModal() {
+    _renderMonthTrans();
+    _openModal('month-trans');
+  }
+
+  $('btn-show-all-trans').addEventListener('click', openMonthTransModal);
+  _bindModal('month-trans');
+
+  $('btn-mt-filter').addEventListener('click', _ => {
+    const panel = $('mt-filter-panel');
+    panel.classList.toggle('is-visible');
+    if (panel.classList.contains('is-visible')) _syncMtFilterPanel();
+  });
+
+  $All('#mt-rule-pills .filter-rule-pill').forEach(btn =>
+    btn.addEventListener('click', _ => {
+      $All('#mt-rule-pills .filter-rule-pill').forEach(b => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+    })
+  );
+
+  $('btn-mt-filter-apply').addEventListener('click', _ => {
+    _mtFilters.rule = $('mt-rule-pills').querySelector('.is-active')?.dataset.rule || '';
+    _mtFilters.cat  = $('mt-filter-cat').value;
+    $('mt-filter-panel').classList.remove('is-visible');
+    _renderMonthTrans();
+  });
+
+  $('btn-mt-filter-reset').addEventListener('click', _ => {
+    _mtFilters.rule = _mtFilters.cat = '';
+    $('mt-filter-cat').value = '';
+    $All('#mt-rule-pills .filter-rule-pill').forEach(b =>
+      b.classList.toggle('is-active', b.dataset.rule === ''));
+    $('mt-filter-panel').classList.remove('is-visible');
+    _renderMonthTrans();
+  });
+
+  /* ══ Modaux secondaires ════════════════════════════════════════════
+     Menu principal, Apparence, Météo, Évaluation, Props, Payday.   */
+  _bindModal('menu');
+
+  $('btn-link-rgpd').addEventListener('click', _ => {
+    window.open('https://sites.google.com/view/alfred-rgpd', '_blank');
+  });
+
+  $('btn-open-appearance').addEventListener('click', _ => _openModal('appearance'));
+  _bindModal('appearance');
+
+  // Hubs du menu réorganisé (sous-menus / sous-sous-menus)
+  [['btn-open-taches', 'taches'], ['btn-open-outils', 'outils'], ['btn-open-comptes', 'comptes'],
+   ['btn-open-parametres', 'parametres'], ['btn-open-profil', 'profil'],
+   ['btn-open-confidentialite', 'confidentialite'],
+   ['btn-open-interface', 'interface'], ['btn-open-systeme', 'systeme']
+  ].forEach(([btn, name]) => {
+    $(btn).addEventListener('click', _ => _openModal(name));
+    _bindModal(name);
+  });
+
+  /* ── Modal Connecter un compte ──────────────────────────────── */
+  function _connCheckCredentials() {
+    const apply = props => {
+      const hasAll = ['EB_APP_ID', 'EB_PRIVATE_KEY']
+        .every(k => props.some(p => p.key === k && p.value));
+      $('conn-skel').classList.add('is-hidden');
+      $('conn-already-set').classList.toggle('is-hidden', !hasAll);
+      $('conn-form').classList.toggle('is-hidden', hasAll);
+    };
+    if (_cache.props) { apply(_cache.props); return; }
+    $('conn-skel').classList.remove('is-hidden');
+    $('conn-already-set').classList.add('is-hidden');
+    $('conn-form').classList.add('is-hidden');
+    runner('Properties', props => { _cache.props = props; apply(props); }, _ => apply([])).getSavingsProps();
+  }
+
+  /* ── Modal Comptes Enable Banking ──────────────────────────── */
+  function _renderAccountsList(accounts) {
+    const mainUid = accounts.find(a => a.iban)?.uid || accounts[0]?.uid || '';
+    $('accounts-list').innerHTML = accounts.map(a => `
+      <li>
+        <label class="action-item" style="cursor:pointer">
+          <div class="action-item-body">
+            <div class="action-item-label">
+              ${a.uid === mainUid ? '⭐ ' : ''}${escHtml(a.name || a.currency || a.uid)}
+            </div>
+            <div class="action-item-desc">${a.iban ? escHtml(a.iban) : 'Pas d\'IBAN · ' + escHtml(a.currency)}</div>
+          </div>
+          <input type="checkbox" class="acc-toggle" data-uid="${escHtml(a.uid)}" ${a.shown ? 'checked' : ''}
+            style="width:18px;height:18px;accent-color:var(--clr-primary);cursor:pointer">
+        </label>
+      </li>`).join('');
+    $('accounts-list').style.display = '';
+    $('accounts-list-skel').style.display = 'none';
+  }
+
+  function _loadAccountsList() {
+    $('accounts-list-skel').style.display = '';
+    $('accounts-list').style.display = 'none';
+    runner('Accounts', _renderAccountsList).getLinkedAccounts();
+  }
+
+  $('btn-open-accounts').addEventListener('click', _ => {
+    _openModal('accounts');
+    _loadAccountsList();
+  });
+  _bindModal('accounts');
+
+  $('btn-accounts-refresh').addEventListener('click', e => {
+    const btn = e.target;
+    const prev = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = logoSpinner();
+    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    runner('Refresh accounts', data => {
+      restore();
+      if (data.error) { showToast('❌ ' + data.error); return; }
+      showToast('✅ Compte principal : ' + (data.mainUid || '?'));
+      _loadAccountsList();
+    }, restore).refreshLinkedAccountsWeb();
+  });
+
+  $('btn-accounts-save').addEventListener('click', e => {
+    const btn = e.target;
+    const prev = btn.innerHTML;
+    const uids = [...$All('.acc-toggle:checked')].map(el => el.dataset.uid);
+    btn.disabled = true; btn.innerHTML = logoSpinner();
+    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    runner('Accounts', data => {
+      restore();
+      showToast('✅ Enregistré. Patientez...');
+      _cache.props = null;
+      _cache.balances = data;
+      //runner('Data', _applyAllData).getAllData();
+      renderLinkedAccountCards(data);
+      setTimeout(closeAll, 1500);
+    }, restore).setShownAccounts(uids);
+  });
+
+  $('btn-open-connect').addEventListener('click', _ => {
+    _openModal('connect');
+    _connCheckCredentials();
+  });
+  _bindModal('connect');
+
+  $('btn-conn-reset').addEventListener('click', _ => {
+    $('conn-skel').classList.add('is-hidden');
+    $('conn-already-set').classList.add('is-hidden');
+    $('conn-form').classList.remove('is-hidden');
+  });
+
+  function _connShowAuthUrl(url) {
+    const res = $('conn-auth-result');
+    res.innerHTML = `
+      <a href="${escHtml(url)}" target="_blank" rel="noopener" class="btn-link-ext">Continuer sur enablebanking.com →</a>
+      <div class="connect-step-hint">Autorisez l'accès dans l'app Revolut, puis revenez ici pour l'étape 4.</div>
+    `;
+    res.className = '';
+    window.open(url, '_blank');
+  }
+
+  /**
+   * Exécute une étape Connect : désactive le bouton, appelle le backend, restaure le bouton,
+   * notifie via toast (10 s). invoke(r) lance l'appel sur le runner ; onOk(data) traite le succès.
+   */
+  function _runConnectStep({ btn, invoke, onOk }) {
+    const prev = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = logoSpinner();
+    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    invoke(runner('Enable Banking',
+      data => {
+        restore();
+        if (data && data.error) return showToast('❌ ' + data.error, 5000);
+        onOk?.(data);
+      }, restore, 5000
+    ));
+  }
+
+  $('btn-conn-register').addEventListener('click', e => {
+    const bearer = $('conn-bearer').value.trim();
+    if (!bearer) { showToast('⚠️ Bearer Token requis (étape 1).', 5000); return; }
+    _runConnectStep({
+      btn: e.target,
+      invoke: r => r.registerEnableBankingApp(bearer),
+      onOk: data => {
+        _cache.props = null;
+        showToast(data.linkError ? '⚠️ Liaison ASPSP : ' + data.linkError : '✅ Application enregistrée', 5000);
+        if (data.authUrl) _connShowAuthUrl(data.authUrl);
+      }
+    });
+  });
+
+  // Étape 3 : (re)génère le lien d'activation ASPSP — utile si l'ouverture auto de l'étape 2 a échoué
+  $('btn-conn-auth').addEventListener('click', e => {
+    const match = $('conn-bearer').value.match(/[\w_.~-]{100,}/);
+    const bearer = match ? match[0] : null;
+    if (!bearer) { showToast('⚠️ Bearer Token requis (étape 1).', 5000); return; }
+    _runConnectStep({
+      btn: e.target,
+      invoke: r => r.activateAppEB(bearer),
+      onOk: data => {
+        if (data.url) _connShowAuthUrl(data.url);
+      }
+    });
+  });
+
+  $('btn-conn-psd2').addEventListener('click', e => {
+    _runConnectStep({
+      btn: e.target,
+      invoke: r => r.setupEnableBankingWeb(),
+      onOk: data => {
+        if (data.url) {
+          $('conn-psd2-result').innerHTML = `
+            <a href="${escHtml(data.url)}" target="_blank" rel="noopener" class="btn-link-ext">Autoriser dans Revolut →</a>
+            <div class="connect-step-hint">Après autorisation dans l'app Revolut, Alfred enregistre automatiquement la session.</div>
+          `;
+          window.open(data.url, '_blank');
+        }
+      }
+    });
+  });
+
+  bindToggle({
+    btnId: 'toggle-theme-btn', labelId: 'theme-desc',
+    stateKey: 'lightTheme',
+    onLabel: 'Mode clair', offLabel: 'Mode sombre',
+    onChange: v => document.documentElement.setAttribute('data-theme', v ? 'light' : 'dark'),
+  });
+
+  bindToggle({
+    btnId: 'toggle-hide-amounts-btn', labelId: 'hide-amounts-desc',
+    stateKey: 'hideAmounts',
+    persist: false,
+    onLabel: 'Masqués', offLabel: 'Affichés',
+    onChange: _ => {
+      _renderTransList('recent-trans-list', STATE.transLimit);
+      if (_cache.balances) renderLinkedAccountCards(_cache.balances);
+      if (_charges.loaded) renderPrevList();
+      renderForecast();
+      if (_cache.cur)   renderBalances(_cache.cur);
+      if (_cache.rules) renderDonut(_cache.rules);
+    },
+  });
+
+  bindToggle({
+    btnId: 'toggle-nav-labels-btn', labelId: 'nav-labels-desc',
+    stateKey: 'hideNavLabels',
+    onLabel: 'Masqués', offLabel: 'Affichés',
+    onChange: v => document.body.classList.toggle('no-nav-labels', v),
+  });
+  document.body.classList.toggle('no-nav-labels', STATE.hideNavLabels);
+
+  bindToggle({
+    btnId: 'toggle-splash-btn', labelId: 'splash-desc',
+    stateKey: 'hideSplash',
+    onLabel: 'Désactivé', offLabel: 'Activé',
+  });
+
+  bindToggle({
+    btnId: 'toggle-auto-import-btn', labelId: 'auto-import-desc',
+    stateKey: 'autoImportRevolut',
+    onLabel: 'Activé', offLabel: 'Désactivé',
+  });
+
+  /* ── Stepper : nombre de transactions affichées en page Budget ─── */
+  function updateTransLimitUI() {
+    $('trans-limit-value').textContent = STATE.transLimit;
+    $('btn-trans-limit-minus').disabled = STATE.transLimit <= TRANS_LIMIT.MIN;
+    $('btn-trans-limit-plus').disabled  = STATE.transLimit >= TRANS_LIMIT.MAX;
+  }
+  function changeTransLimit(delta) {
+    const prev = STATE.transLimit;
+    const next = Math.max(TRANS_LIMIT.MIN, Math.min(TRANS_LIMIT.MAX, prev + delta));
+    if (next === prev) return;
+    STATE.transLimit = next;
+    runner('Sauvegarde transLimit', null, _ => {
+      STATE.transLimit = prev; // rollback si la persistance échoue
+      updateTransLimitUI();
+      _renderTransList('recent-trans-list', STATE.transLimit);
+    }).setUserPref('transLimit', next);
+    updateTransLimitUI();
+    _renderTransList('recent-trans-list', STATE.transLimit);
+  }
+  $('btn-trans-limit-minus').addEventListener('click', _ => changeTransLimit(-1));
+  $('btn-trans-limit-plus') .addEventListener('click', _ => changeTransLimit(+1));
+  updateTransLimitUI();
+
+  /* ── Stepper : objectif de dépense/jour (profil) ─── */
+  function updateGoalUI() {
+    $('goal-value').textContent = STATE.dailyGoal + ' €';
+    $('btn-goal-minus').disabled = STATE.dailyGoal <= DAILY_GOAL.MIN;
+    $('btn-goal-plus').disabled  = STATE.dailyGoal >= DAILY_GOAL.MAX;
+  }
+  function _rerenderGoalLine() {
+    if (_cache.cur) renderGoal(_cache.cur.budget, getDayMetrics().jr);
+  }
+  function changeDailyGoal(delta) {
+    const prev = STATE.dailyGoal;
+    const next = Math.max(DAILY_GOAL.MIN, Math.min(DAILY_GOAL.MAX, prev + delta * DAILY_GOAL.STEP));
+    if (next === prev) return;
+    STATE.dailyGoal = next;
+    runner('Sauvegarde dailyGoal', null, _ => {
+      STATE.dailyGoal = prev; // rollback si la persistance échoue
+      updateGoalUI();
+      _rerenderGoalLine();
+    }).setUserPref('dailyGoal', next);
+    updateGoalUI();
+    _rerenderGoalLine();
+  }
+  $('btn-goal-minus').addEventListener('click', _ => changeDailyGoal(-1));
+  $('btn-goal-plus') .addEventListener('click', _ => changeDailyGoal(+1));
+  updateGoalUI();
+
+  /* ── Le Mammouth : contact prévenu en cas de mois difficile ─── */
+  function _updateMammothFields() {
+    $('mammoth-fields').classList.toggle('is-visible', !!STATE.mammothEnabled);
+  }
+  function bindMammothField(inputId, key) {
+    const el = $(inputId);
+    el.value = STATE[key] || '';
+    el.addEventListener('change', _ => {
+      const prev = STATE[key] || '';
+      const val  = el.value.trim();
+      if (val === prev) return;
+      STATE[key] = val;
+      runner('Sauvegarde ' + key, null, _ => { STATE[key] = prev; el.value = prev; })
+        .setUserPref(key, val);
+    });
+  }
+  bindToggle({
+    btnId: 'toggle-mammoth-btn', labelId: 'mammoth-desc',
+    stateKey: 'mammothEnabled',
+    onLabel: 'Activé', offLabel: 'Désactivé',
+    onChange: _updateMammothFields,
+  });
+  bindMammothField('mammoth-name',    'mammothName');
+  bindMammothField('mammoth-email',   'mammothEmail');
+  bindMammothField('mammoth-message', 'mammothMessage');
+  _updateMammothFields();
+
+  /* ── Pull-to-refresh : swipe down en haut de page (hors modal/splash) ── */
+  let _ptrActive = false;
+  let _ptrFinish = _ => {};
+  (function initPullToRefresh() {
+    const THRESHOLD = 150; // px de tirage requis pour déclencher
+    const ind = document.createElement('div');
+    ind.className = 'ptr';
+    ind.innerHTML = logoSpinner(80);
+    const bg = document.createElement('div');
+    bg.className = 'ptr-backdrop';
+    document.body.append(bg, ind);
+
+    let startY = null, startX = 0, pulling = false, dy = 0;
+    const splashUp = _ => { const s = $('splash'); return s && !s.classList.contains('is-hidden'); };
+    const canStart = _ => window.scrollY <= 0 && _modal.stack.length === 0
+      && !ind.classList.contains('is-loading') && !splashUp();
+
+    document.addEventListener('touchstart', e => {
+      if (!canStart()) { startY = null; return; }
+      startY = e.touches[0].clientY; startX = e.touches[0].clientX; pulling = false; dy = 0;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', e => {
+      if (startY === null) return;
+      dy = e.touches[0].clientY - startY;
+      if (!pulling) {
+        // Avant d'engager : laisse passer le swipe horizontal (boutons Modifier/Supprimer) et le scroll vers le haut
+        const dx = e.touches[0].clientX - startX;
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        if (Math.abs(dx) > Math.abs(dy) || dy <= 0) { startY = null; return; }
+      } else if (dy <= 0) { // engagé puis retour vers le haut → on laisse le scroll normal
+        pulling = false; ind.classList.remove('is-pulling'); ind.style.cssText = ''; bg.style.cssText = '';
+        return;
+      }
+      e.preventDefault(); // bloque le scroll/bounce de la page pendant le tirage
+      pulling = true;
+      ind.classList.add('is-pulling');
+      const progress = Math.min(1, dy / THRESHOLD);
+      const pull = Math.min(THRESHOLD * 1.4, dy * 0.5); // résistance
+      ind.style.transition = 'none';
+      ind.style.opacity   = String(progress);
+      ind.style.transform = `translateY(${pull}px) scale(${0.8 + progress * 0.2})`;
+      ind.style.setProperty('--draw', String(100 - progress * 100)); // dessine le logo selon dy/THRESHOLD
+      ind.classList.toggle('is-armed', dy > THRESHOLD);
+      bg.style.transition = 'none';
+      bg.style.opacity = String(progress);
+    }, { passive: false });
+
+    document.addEventListener('touchend', _ => {
+      if (startY === null) return;
+      const armed = pulling && dy > THRESHOLD;
+      startY = null; pulling = false;
+      ind.style.transition = '';
+      ind.style.opacity = ''; ind.style.transform = '';
+      ind.style.removeProperty('--draw');
+      ind.classList.remove('is-armed', 'is-pulling');
+      bg.style.transition = ''; bg.style.opacity = '';
+      if (armed) {
+        ind.classList.add('is-loading');
+        bg.classList.add('is-loading');
+        document.body.style.overflow = 'hidden';
+        document.body.style.pointerEvents = 'none';
+        _ptrActive = true;
+        loadAppData();
+      }
+    }, { passive: false });
+
+    _ptrFinish = _ => {
+      if (!_ptrActive) return;
+      _ptrActive = false;
+      ind.classList.remove('is-loading');
+      bg.classList.remove('is-loading');
+      document.body.style.overflow = '';
+      document.body.style.pointerEvents = 'auto';
+    };
+  })();
+
+  $('btn-import-revolut').addEventListener('click', e => {
+    const btn  = e.target;
+    const prev = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = logoSpinner();
+    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    runner('Import transactions', result => {
+      restore();
+      _onImportSuccess(result);
+    }, restore).importRevolutTransactionsWeb();
+  });
+
+  /* ── Transaction modal ───────────────────────────────────────── */
+  $('tx-date').value = new Date().toISOString().slice(0, 10);
+
+  $('btn-add-trans').addEventListener('click', _ => {
+    _trans.editingRow = null;
+    $('form-transaction').reset();
+    $('tx-date').value = new Date().toISOString().slice(0, 10);
+    $('btn-add').innerHTML = 'Ajouter';
+    _openModal('transaction');
+  });
+  _bindModal('transaction');
+
+  $('form-transaction').addEventListener('submit', e => {
+    e.preventDefault();
+    const amount   = parseFloat($('tx-amount').value);
+    const date     = $('tx-date').value;
+    const label    = $('tx-label').value.trim();
+    const rule     = $('tx-rule').value.trim();
+    const category = $('tx-category').value.trim();
+
+    if (isNaN(amount) || !date || !label) {
+      showToast('⚠️ Montant, date et libellé obligatoires');
+      return;
+    }
+
+    const editing = _trans.editingRow !== null;
+    const btn = $('btn-add');
+    const prev = editing ? 'Enregistrer' : 'Ajouter';
+    btn.disabled = true; btn.innerHTML = logoSpinner();
+    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const onSuccess = data => {
+      restore();
+      showToast('✅ Transaction ' + (editing ? 'modifiée' : 'ajoutée'));
+      $('form-transaction').reset();
+      $('tx-date').value = date;
+      if (editing) history.back();
+      else         closeAll();
+      _trans.editingRow = null;
+      applyForecast(data);
+      if (_modal.stack.includes('month-trans')) _renderMonthTrans();
+      loadBudgetRules();
+    };
+
+    if (editing) {
+      runner('Edit transaction', onSuccess, restore).editTransactionByRow(_trans.editingRow, amount, date, label, rule, category);
+    } else {
+      runner('Add transaction', onSuccess, restore).addTransaction(amount, date, label, rule, category);
+    }
+  });
+
+  /* ── Évaluer une dépense ─────────────────────────────────────── */
+  function evaluateExpense() {
+    const x = parseFloat($('eval-amount').value);
+    const result = $('eval-result');
+    if (isNaN(x) || x <= 0 || _meteo.weather === null || !_meteo.budgetInit) {
+      result.classList.remove('is-visible');
+      return;
+    }
+    const { jr, rj } = getDayMetrics({ tomorrow: true });
+    const newBudget = _meteo.budget - x;
+    const newRatio  = rj > 0 ? newBudget / (jr * rj) : -1;
+    const newW      = WEATHER.find(e => newRatio < e.max);
+    const curW      = _meteo.weather;
+    const delta     = WEATHER.indexOf(newW) - WEATHER.indexOf(curW);
+    const newMarge  = newBudget / jr;
+
+    let badge, cls;
+    let msg = (delta < 0 ? `Tu chuteras de ${Math.abs(delta)} paliers. ` : '') + `Il te restera ${fmt(newMarge)}/j.`;
+    if (newBudget < 0) {
+      badge = '💀'; cls = 'is-danger';
+      msg = `Dépense impossible. Il te manque ${fmt(Math.abs(newBudget))}.`;
+    } else if (WEATHER.indexOf(newW) <= 2) {
+      badge = '🛑'; cls = 'is-danger';
+    } else if (WEATHER.indexOf(newW) == 3 || newRatio < _meteo.ratio) {
+      badge = '⚠️'; cls = 'is-warning';
+    } else {
+      badge = '✅'; cls = 'is-ok';
+    }
+
+    result.innerHTML = `
+      <div class="eval-compare">
+        <div class="eval-row">
+          <span class="eval-label">Auj.</span>
+          <span class="eval-value">${curW.icon} ${curW.label} · ${Math.round(_meteo.ratio * 100)} %</span>
+        </div>
+        <div class="eval-row">
+          <span class="eval-label">Dem.</span>
+          <span class="eval-value">${newW.icon} ${newW.label} · ${Math.round(newRatio * 100)} %</span>
+        </div>
+      </div>
+      <div class="eval-message ${cls}">${badge} ${msg}</div>`;
+    result.classList.add('is-visible');
+  }
+
+  $('eval-amount').addEventListener('input', evaluateExpense);
+
+  /* ── Propriétés du script ────────────────────────────────────── */
+  function renderProps(props) {
+    const list = $('props-list');
+    const groups = { script: [], user: [] };
+    props.forEach(p => groups[p.source]?.push(p));
+
+    const makeItem = p => {
+      const li = document.createElement('li');
+      li.className = 'props-item';
+      li.innerHTML = `
+        <span class="props-key">${escHtml(p.key)}</span>
+        <input class="props-value" data-source="${p.source}" value="${escHtml(p.value)}" autocomplete="off">
+        <button class="props-delete" type="button" title="Supprimer">✕</button>
+      `;
+
+      const valInput = li.querySelector('.props-value');
+      const delBtn   = li.querySelector('.props-delete');
+
+      // Édition valeur
+      valInput.dataset.last = valInput.value;
+      valInput.addEventListener('blur', _ => {
+        if (valInput.dataset.last === valInput.value) return;
+        valInput.dataset.last = valInput.value;
+        valInput.classList.add('is-saving');
+        runner(`Set ${p.key}`,
+          _ => { valInput.classList.remove('is-saving'); valInput.classList.add('is-saved'); setTimeout(_ => valInput.classList.remove('is-saved'), 1200); },
+          _ => valInput.classList.remove('is-saving')
+        ).setAnyProp(p.source, p.key, valInput.value);
+      });
+      valInput.addEventListener('keydown', e => { if (e.key === 'Enter') valInput.blur(); });
+
+      // Suppression
+      delBtn.addEventListener('click', _ => {
+        if (!confirm(`Supprimer "${p.key}" ?`)) return;
+        runner(`Delete ${p.key}`, _ => {
+          li.remove();
+          _cache.props = null;
+        }).deleteProp(p.source, p.key);
+      });
+
+      return li;
+    };
+
+    list.innerHTML = '';
+    [['script', '🖥 Script'], ['user', '👤 Utilisateur']].forEach(([src, label]) => {
+      if (!groups[src].length) return;
+      const hdr = document.createElement('li');
+      hdr.className = 'props-section-header';
+      hdr.textContent = label;
+      list.appendChild(hdr);
+      groups[src].forEach(p => list.appendChild(makeItem(p)));
+    });
+  }
+
+  $('btn-open-props').addEventListener('click', _ => {
+    _showSkeleton('props-list');
+    _openModal('props');
+    _cache.props = null;
+    runner('Properties', props => {
+      _cache.props = props;
+      renderProps(props);
+    }).getAllProps();
+  });
+  _bindModal('props');
+
+  /* ── Payday modal ────────────────────────────────────────────── */
+  function resetPaydayUI() {
+    $('action-close-confirm').style.display = 'none';
+    $('btn-close-month').style.display = '';
+  }
+
+  function initPaydayInfo() {
+    const cur = allMonths.find(m => m.isCurrent);
+    $('action-close-info').textContent = cur
+      ? 'Mois à clôturer : ' + cur.month
+      : 'Chargement…';
+  }
+
+  function getValidatedSalary() {
+    const v = parseFloat($('salary-input').value);
+    return (isNaN(v) || v < 0) ? null : v;
+  }
+
+  $('btn-open-payday').addEventListener('click', _ => {
+    resetPaydayUI();
+    initPaydayInfo();
+    _openModal('payday');
+  });
+  _bindModal('payday');
+
+  $('btn-close-month').addEventListener('click', e => {
+    if (getValidatedSalary() === null) {
+      showToast('⚠️ Veuillez saisir un montant de salaire valide.');
+      $('salary-input').focus();
+      return;
+    }
+    initPaydayInfo();
+    $('action-close-confirm').style.display = 'block';
+    e.target.style.display = 'none';
+  });
+
+  $('btn-cancel-close').addEventListener('click', resetPaydayUI);
+
+  $('btn-confirm-close').addEventListener('click', e => {
+    const btn = e.target;
+    const salary = getValidatedSalary();
+    if (salary === null) {
+      showToast('⚠️ Montant de salaire invalide.');
+      return;
+    }
+    const prev = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = logoSpinner();
+    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    runner('Clôture', result => {
+      restore();
+      closeAll();
+      resetPaydayUI();
+      $('salary-input').value = '';
+      applyForecast(result.forecast);
+      loadBudgetRules();
+      const diff = result.diff >= 0 ? `+${result.diff}` : `${result.diff}`;
+      showToast(`✅ ${result.closedMonth} clôturé · solde ${diff} € · ${result.archivedCount} transaction(s) archivée(s)`);
+    }, restore).paydayWeb(salary);
+  });
+
+  /* ── Splash screen ───────────────────────────────────────────── */
+  // Masquer immédiatement si le splash est désactivé dans les préférences
+  if (STATE.hideSplash) { const s = $('splash'); if (s) s.classList.add('is-hidden'); }
+
+  (function initSplash() {
+    const splash = $('splash');
+    if (!splash || STATE.hideSplash) return;
+
+    let dismissed = false;
+    splash.addEventListener('click', _ => {
+      if (dismissed) return;
+      dismissed = true;
+      splash.classList.add('is-hiding');
+      setTimeout(_ => splash.classList.add('is-hidden'), 420);
+    });
+  })();
+
+  // ── Helpers splash Gemini (appelés depuis applyForecast) ───────
+  function _splashShowInsight(message) {
+    const icon  = $('splash-gemini-icon');
+    const msgEl = $('splash-message');
+    _geminiDone = true;
+    if (msgEl) _typewrite(msgEl, message, _ => { if (icon) icon.classList.add('is-idle'); });
+  }
+
+  function _splashHideGemini() {
+    const icon = $('splash-gemini-icon');
+    _geminiDone = true;
+    if (icon) icon.classList.add('is-hidden');
+  }
+
+
+  /* ══ Page Charges (gestion Prevs) ══════════════════════════════════
+     CRUD sur les lignes Prevs + filtres mois/type/règle.            */
+  function _lineActiveForAbs(line, abs) {
+    const start = _parsePrevDate(line.start);
+    const end   = _parsePrevDate(line.end);
+    if (start !== null && abs < start) return false;
+    if (end   !== null && abs > end)   return false;
+    if (line.months) {
+      const nums = new Set(line.months.split(',').map(Number));
+      if (!nums.has(abs % 12 + 1)) return false;
+    }
+    return true;
+  }
+  function _curAbs() {
+    if (!allMonths.length) { const n = new Date(); return _absM(n.getFullYear(), n.getMonth()); }
+    const [month, year] = allMonths[0].month.split('/').map(Number);
+    const fDate = new Date(year, month - 1, 1);
+    const today = new Date();
+    const ref   = fDate > today ? fDate : today;
+    return _absM(ref.getFullYear(), ref.getMonth());
+  }
+
+  /* ── Chargement ── */
+  function loadPrevLines() {
+    _showSkeleton('charges-list');
+    runner('Charges', data => {
+      _charges.lines = data.lines;
+      _charges.types = data.types;
+      if (!_charges.filters.month) _charges.filters.month = _absToMmYyyy(_curAbs());
+      renderPrevList();
+    }).getPrevLines();
+  }
+
+  /* ── Panneau de filtres ── */
+  $('btn-charges-filter').addEventListener('click', _ => {
+    const panel = $('charges-filter-panel');
+    if (!panel.classList.contains('is-visible')) _syncFilterPanel();
+    panel.classList.toggle('is-visible');
+  });
+
+  function _syncFilterPanel() {
+    const sel = $('filter-month');
+    if (sel.options.length <= 1 && allMonths.length) {
+      const curAbs = _curAbs();
+      const endAbs = _parsePrevDate(allMonths[allMonths.length - 1].month) ?? curAbs + 11;
+      sel.innerHTML = '<option value="">—</option>';
+      for (let abs = curAbs; abs <= endAbs; abs++) {
+        sel.appendChild(new Option(_absToLabel(abs), _absToMmYyyy(abs)));
+      }
+    }
+    const tsel = $('filter-type');
+    if (tsel.options.length <= 1 && _charges.types.length) {
+      tsel.innerHTML = '<option value="">—</option>';
+      _charges.types.forEach(t => tsel.appendChild(new Option(t, t)));
+    }
+    sel.value  = _charges.filters.month;
+    tsel.value = _charges.filters.type;
+    $All('#filter-rule-pills .filter-rule-pill').forEach(b =>
+      b.classList.toggle('is-active', b.dataset.rule === _charges.filters.rule));
+  }
+
+  $All('#filter-rule-pills .filter-rule-pill').forEach(btn =>
+    btn.addEventListener('click', _ => {
+      $All('#filter-rule-pills .filter-rule-pill').forEach(b => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+    })
+  );
+
+  $('btn-filter-apply').addEventListener('click', _ => {
+    _charges.filters.month = $('filter-month').value;
+    _charges.filters.type  = $('filter-type').value;
+    _charges.filters.rule  = $('filter-rule-pills').querySelector('.is-active')?.dataset.rule || '';
+    $('charges-filter-panel').classList.remove('is-visible');
+    renderPrevList();
+  });
+
+  $('btn-filter-reset').addEventListener('click', _ => {
+    _charges.filters.month = _charges.filters.type = _charges.filters.rule = '';
+    $('filter-month').value = '';
+    $('filter-type').value  = '';
+    $All('#filter-rule-pills .filter-rule-pill').forEach(b =>
+      b.classList.toggle('is-active', b.dataset.rule === ''));
+    $('charges-filter-panel').classList.remove('is-visible');
+    renderPrevList();
+  });
+
+  $('btn-add-prev').addEventListener('click', _ => openAddPrevLine());
+
+  /* ── Rendu liste ── */
+  function renderPrevList() {
+    const list   = $('charges-list');
+    const curAbs = _charges.filters.month ? (_parsePrevDate(_charges.filters.month) ?? _curAbs()) : _curAbs();
+    let   lines  = _charges.lines;
+
+    if (_charges.filters.month) lines = lines.filter(l => _lineActiveForAbs(l, curAbs));
+    if (_charges.filters.type)  lines = lines.filter(l => l.type === _charges.filters.type);
+    if (_charges.filters.rule)  lines = lines.filter(l => l.rule === _charges.filters.rule);
+
+    const activeCount = [_charges.filters.month, _charges.filters.type, _charges.filters.rule].filter(Boolean).length;
+    const badge = $('filter-count-badge');
+    badge.classList.toggle('is-visible', activeCount);
+    if (activeCount) badge.textContent = activeCount;
+    $('btn-charges-filter').classList.toggle('has-filters', !!activeCount);
+    _renderFilterChips();
+
+    // Résumé : uniquement les lignes actives pour le mois de référence
+    const active = lines.filter(l => _lineActiveForAbs(l, curAbs));
+    const sumPos = active.filter(l => l.amount > 0 && l.rule !== 'Epargne').reduce((s, l) => s + l.amount, 0);
+    const sumNeg = active.filter(l => l.amount < 0 && l.rule !== 'Epargne').reduce((s, l) => s + l.amount, 0);
+    const sumSav = active.filter(l => l.rule === 'Epargne').reduce((s, l) => s + l.amount, 0);
+    const sumEl  = $('charges-summary');
+    sumEl.classList.toggle('is-visible', active.length);
+    if (active.length) {
+      $('charges-sum-pos').textContent = sumPos ? fmt(sumPos) : '—';
+      $('charges-sum-neg').textContent = sumNeg ? fmt(sumNeg) : '—';
+      $('charges-sum-sav').textContent = sumSav ? fmt(sumSav) : '—';
+    }
+
+    if (!lines.length) {
+      list.innerHTML = '<div class="empty-state">' +
+        (activeCount ? 'Aucune charge pour ces filtres' : 'Aucune charge planifiée') +
+        '</div>';
+      return;
+    }
+
+    const sorted = [...lines].sort((a, b) => {
+      const aAct = _lineActiveForAbs(a, curAbs), bAct = _lineActiveForAbs(b, curAbs);
+      if (aAct !== bAct) return aAct ? -1 : 1;
+      if (a.type !== b.type) return (a.type || '').localeCompare(b.type || '');
+      if (a.rule !== b.rule) return (a.rule || '').localeCompare(b.rule || '');
+      return a.amount <= b.amount ? -1 : 1;
+    });
+
+    list.innerHTML = sorted.map(l => _prevItemHtml(l, curAbs)).join('');
+    list.querySelectorAll('.prev-item').forEach(el => {
+      const row = parseInt(el.dataset.row, 10);
+      makeSwipeable(el, {
+        onEdit:   _ => openEditPrevLine(row),
+        onDelete: _ => {
+          if (!confirm(`Supprimer "${el.dataset.label}" ?`)) return;
+          _deletePrevLine(row, el);
+        },
+      });
+    });
+  }
+
+  function _renderFilterChips() {
+    const chips = [];
+    if (_charges.filters.month) chips.push({ key: 'month', label: _absToLabel(_parsePrevDate(_charges.filters.month) ?? 0) });
+    if (_charges.filters.type)  chips.push({ key: 'type',  label: _charges.filters.type });
+    if (_charges.filters.rule)  chips.push({ key: 'rule',  label: _charges.filters.rule });
+    _renderChips('filter-chips', chips, key => { _charges.filters[key] = ''; renderPrevList(); });
+  }
+
+  function _prevItemHtml(line, curAbs) {
+    const active = _lineActiveForAbs(line, curAbs);
+    const color  = RULE_COLORS[line.rule] || 'var(--clr-muted)';
+    const cls    = line.amount >= 0 ? 'positive' : (line.rule == 'Epargne' ? 'epargne' : 'negative');
+    const period = line.start
+      ? (line.end ? `${line.start} → ${line.end}` : `dès ${line.start}`)
+      : (line.end ? `jusqu'à ${line.end}` : '');
+
+    return `<div class="prev-item${active ? ' is-active' : ''}" data-row="${line.row}" data-label="${escHtml(line.label || '')}">
+      <div class="trans-slider">
+        <div class="trans-main prev-main">
+          <div class="prev-accent" style="background:${color}">${line.rule ? escHtml(line.rule) : ''}</div>
+          <div class="prev-body">
+            <div class="prev-top">
+              <span class="prev-label">${STATE.hideAmounts ? '•'.repeat(15) : escHtml(line.label || line.type || '—')}</span>
+              <span class="prev-amount ${cls}">${fmt(line.amount)}</span>
+            </div>
+            <div class="prev-meta">
+              ${!active && line.rule ? `<span class="prev-tag" style="--tc:${color}">${escHtml(line.rule)}</span>` : ''}
+              ${line.type   ? `<span class="prev-tag-dim">${escHtml(line.type)}</span>` : ''}
+              ${line.months ? `<span class="prev-period">Mois ${escHtml(line.months)}</span>` : ''}
+              ${period      ? `<span class="prev-period">${escHtml(period)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="trans-actions">
+          <button class="trans-edit"   type="button" aria-label="Modifier">✏️</button>
+          <button class="trans-delete" type="button" aria-label="Supprimer">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  /* ── Formulaire add/edit ── */
+  function _populatePrevTypeSelect() {
+    const sel = $('pl-type');
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    _charges.types.forEach(t => sel.appendChild(new Option(t, t)));
+  }
+
+  function _updateSignBtn() {
+    const btn = $('pl-sign-btn');
+    btn.textContent = _charges.sign < 0 ? '−' : '+';
+    btn.classList.toggle('is-positive', _charges.sign > 0);
+  }
+
+  function openAddPrevLine() {
+    _charges.editingRow = null;
+    _populatePrevTypeSelect();
+    $('prev-line-title').textContent = 'Ajouter une charge';
+    $('form-prev-line').reset();
+    _charges.sign = -1;
+    _updateSignBtn();
+    $All('#pl-rule-pills .pl-rule-pill').forEach(b => b.classList.toggle('is-active', b.dataset.rule === ''));
+    $All('#pl-months-pills .pl-month-pill').forEach(b => b.classList.remove('is-active'));
+    _openModal('prev-line');
+  }
+
+  function openEditPrevLine(rowIndex) {
+    const line = _charges.lines.find(l => l.row === rowIndex);
+    if (!line) return;
+    _charges.editingRow = rowIndex;
+    _populatePrevTypeSelect();
+    $('prev-line-title').textContent = 'Modifier la charge';
+    $('pl-label').value  = line.label;
+    $('pl-amount').value = Math.abs(line.amount);
+    _charges.sign = line.amount >= 0 ? 1 : -1;
+    _updateSignBtn();
+    $('pl-type').value = line.type || '';
+    $All('#pl-rule-pills .pl-rule-pill').forEach(b => b.classList.toggle('is-active', b.dataset.rule === line.rule));
+    // Start / end : convert MM/YYYY → YYYY-MM (format type="month")
+    $('pl-start').value = line.start ? line.start.slice(3) + '-' + line.start.slice(0, 2) : '';
+    $('pl-end').value   = line.end   ? line.end.slice(3)   + '-' + line.end.slice(0, 2)   : '';
+    const activeMonths = line.months ? new Set(line.months.split(',').map(Number)) : new Set();
+    $All('#pl-months-pills .pl-month-pill').forEach(b =>
+      b.classList.toggle('is-active', activeMonths.has(+b.dataset.month)));
+    _openModal('prev-line');
+  }
+
+  $('pl-sign-btn').addEventListener('click', _ => { _charges.sign *= -1; _updateSignBtn(); });
+
+  $All('#pl-rule-pills .pl-rule-pill').forEach(btn =>
+    btn.addEventListener('click', _ => {
+      $All('#pl-rule-pills .pl-rule-pill').forEach(b => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+    })
+  );
+
+  $All('#pl-months-pills .pl-month-pill').forEach(btn =>
+    btn.addEventListener('click', _ => btn.classList.toggle('is-active'))
+  );
+
+  _bindModal('prev-line');
+
+  $('form-prev-line').addEventListener('submit', e => {
+    e.preventDefault();
+    const amountRaw = parseFloat($('pl-amount').value);
+    if (isNaN(amountRaw) || amountRaw < 0) { showToast('⚠️ Montant invalide'); return; }
+
+    // Convertit YYYY-MM → MM/YYYY
+    const toMmYyyy = v => v ? v.slice(5, 7) + '/' + v.slice(0, 4) : '';
+    const activeRule   = $('pl-rule-pills').querySelector('.is-active')?.dataset.rule || '';
+    const activeMonths = [...$All('#pl-months-pills .pl-month-pill.is-active')]
+      .map(b => b.dataset.month).join(',');
+
+    const data = {
+      label:  $('pl-label').value.trim(),
+      amount: amountRaw * _charges.sign,
+      type:   $('pl-type').value,
+      rule:   activeRule,
+      start:  toMmYyyy($('pl-start').value),
+      end:    toMmYyyy($('pl-end').value),
+      months: activeMonths,
+    };
+
+    if (!data.label && !data.amount) { showToast('⚠️ Libellé ou montant requis'); return; }
+
+    const btn  = $('btn-save-prev');
+    const prev = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = logoSpinner();
+    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const onSuccess = forecast => {
+      restore();
+      applyForecast(forecast);
+      loadPrevLines();
+      history.back();
+      showToast(_charges.editingRow ? '✅ Charge modifiée' : '✅ Charge ajoutée');
+    };
+
+    if (_charges.editingRow) {
+      runner('Sauvegarde', onSuccess, restore).editPrevLine(_charges.editingRow, data);
+    } else {
+      runner('Sauvegarde', onSuccess, restore).addPrevLine(data);
+    }
+  });
+
+  function _deletePrevLine(rowIndex, el) {
+    el.style.opacity = '.4';
+    runner('Suppression', forecast => {
+      applyForecast(forecast);
+      loadPrevLines();
+      showToast('✅ Charge supprimée');
+    }, _ => { el.style.opacity = ''; }).deletePrevLine(rowIndex);
+  }
+
+  /* ══ Init ══════════════════════════════════════════════════════════
+     Démarrage : getAllData() charge tout en un seul appel GAS.       */
+  if (savedTab && $('page-' + savedTab)) navigateTo(savedTab);
+  loadAppData();
+</script>

@@ -1,0 +1,34 @@
+<!-- Modal payday -->
+<div id="modal-payday" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="payday-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title">Outils · Passer en paie</span>
+      </div>
+    </div>
+
+    <div id="action-close-info"></div>
+
+    <div style="margin-bottom:16px;">
+      <div class="form-group">
+        <label for="salary-input">Salaire reçu (€)</label>
+        <input id="salary-input" type="number" step="0.01" min="0" placeholder="0.00">
+      </div>
+    </div>
+
+    <div id="action-close-confirm">
+      <div class="warning-box">
+        ⚠️ Cette action est irréversible. Les transactions du mois seront archivées, une ligne "Solde" ajoutée dans Trans et b_date avancé au mois suivant.
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="btn-confirm-close" class="btn btn-primary" style="flex:1;">✅ Confirmer</button>
+        <button id="btn-cancel-close"  class="btn btn-ghost"   style="flex:1;">Annuler</button>
+      </div>
+    </div>
+
+    <button id="btn-close-month" class="btn btn-primary">Clôturer</button>
+
+  </div>
+</div>

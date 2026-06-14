@@ -1,0 +1,72 @@
+<!-- Modal — Connecter un compte Revolut -->
+<div id="modal-connect" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet">
+
+    <div class="modal-sheet-header">
+      <div class="modal-header">
+        <button id="connect-back" class="modal-back" aria-label="Retour">‹</button>
+        <span class="modal-title">Comptes · Connecter</span>
+      </div>
+      <p>Enable Banking est le service Open Banking (PSD2) utilisé pour récupérer vos transactions.</p>
+    </div>
+
+    <!-- Étape 1 -->
+    <div class="connect-step">
+      <div class="connect-step-num">1</div>
+      <div class="connect-step-body">
+        <div class="connect-step-title">Créer un compte Enable Banking</div>
+        <a href="https://enablebanking.com/cp/applications" target="_blank" rel="noopener" class="btn-link-ext">Ouvrir enablebanking.com →</a>
+        <div class="connect-step-hint">
+          Créez votre compte Enable Banking, puis,<br>
+          Récupérez votre <strong>Bearer Token</strong> dans l'onglet "<strong>API applications</strong>".<br>
+          Cliquez sur le lien "<strong>command line interface</strong>" pour le dévoiler (en bas de la page).
+        </div>
+        <div class="form-group" style="margin-top:8px">
+          <label for="conn-bearer">Bearer Token</label>
+          <input id="conn-bearer" type="text" class="form-input" placeholder='Colle tout le texte, ça ira!' autocomplete="off">
+        </div>
+      </div>
+    </div>
+
+    <!-- Étape 2 -->
+    <div class="connect-step">
+      <div class="connect-step-num">2</div>
+      <div class="connect-step-body">
+        <div class="connect-step-title">Enregistrer l'application Alfred</div>
+        <div id="conn-skel" class="skeleton skel-box"></div>
+        <div id="conn-already-set" class="connect-msg ok is-hidden">
+          ✅ Application déjà enregistrée.
+          <button id="btn-conn-reset" class="btn-link" type="button">Regénérer</button>
+        </div>
+        <div id="conn-form" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="connect-step-desc">Alfred va générer une paire de clés RSA et enregistrer l'application sur Enable Banking. Cette opération peut prendre quelques secondes.</div>
+          <button id="btn-conn-register" class="btn-primary" type="button">Générer et enregistrer</button>
+          <div id="conn-register-msg" class="connect-msg"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Étape 3 -->
+    <div class="connect-step">
+      <div class="connect-step-num">3</div>
+      <div class="connect-step-body">
+        <div class="connect-step-title">Activer l'application</div>
+        <div class="connect-step-desc">Génère un lien Enable Banking pour activer l'application sur votre compte bancaire.</div>
+        <button id="btn-conn-auth" class="btn-primary" type="button">Créer le lien d'activation</button>
+        <div id="conn-auth-result"></div>
+      </div>
+    </div>
+
+    <!-- Étape 4 -->
+    <div class="connect-step">
+      <div class="connect-step-num">4</div>
+      <div class="connect-step-body">
+        <div class="connect-step-title">Autoriser l'accès au compte bancaire</div>
+        <div class="connect-step-desc">Génère un lien de consentement PSD2. Ouvrez-le, autorisez sur votre app bancaire.</div>
+        <button id="btn-conn-psd2" class="btn-primary" type="button">Créer le lien de consentement</button>
+        <div id="conn-psd2-result"></div>
+      </div>
+    </div>
+
+  </div>
+</div>

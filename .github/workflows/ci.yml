@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [dev]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Check if Alfred.js was modified
+        id: check
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q '^gas/Alfred\.js$'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-node@v5
+        if: steps.check.outputs.changed == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+        if: steps.check.outputs.changed == 'true'
+
+      - run: npm test
+        if: steps.check.outputs.changed == 'true'
+
+      - name: Tests skipped (Alfred.js inchangé)
+        if: steps.check.outputs.changed == 'false'
+        run: echo "✅ Alfred.js non modifié — tests Jest ignorés."
+
+  build-test:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Check if Alfred.js was modified
+        id: check
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q '^gas/Alfred\.js$'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-node@v5
+        if: steps.check.outputs.changed == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+        if: steps.check.outputs.changed == 'true'
+
+      - run: npm run build:test
+        if: steps.check.outputs.changed == 'true'
+
+      - name: Build-test skipped (Alfred.js inchangé)
+        if: steps.check.outputs.changed == 'false'
+        run: echo "✅ Alfred.js non modifié — build:test ignoré."
