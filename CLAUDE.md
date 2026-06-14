@@ -110,7 +110,7 @@ loadAppData() → getAllData() → _applyAllData(data)
 
 ### Endpoints Web App (via `google.script.run`)
 
-`getAllData` (tout en un appel), `addTransaction / editTransactionByRow / deleteTransactionByRow`, `getPrevLines / addPrevLine / editPrevLine / deletePrevLine`, `getBudgetRules`, `getTransOptions`, `paydayWeb(salary)`, `getGeminiInsight(clientKey, weatherLevels)`, `getUserPrefs / setUserPref`, `importRevolutTransactionsWeb` (= `_importRevolutCore()` PUIS `getAllData()`), `getRevolutTasks / completeTask`, `createSheetFromTemplate`, `getSetupInfo`.
+`getAllData` (tout en un appel), `addTransaction / editTransactionByRow / deleteTransactionByRow`, `getPrevLines / addPrevLine / editPrevLine / deletePrevLine`, `getBudgetRules`, `getTransOptions`, `paydayWeb(salary)`, `getGeminiInsight(clientKey)`, `getUserPrefs / setUserPref`, `importRevolutTransactionsWeb` (= `_importRevolutCore()` PUIS `getAllData()`), `getRevolutTasks / completeTask`, `createSheetFromTemplate`, `getSetupInfo`.
 
 `getAllData()` payload : `{ forecast, rules, options, savingsProps, mainAccountName, linkedAccountsCount, shownAccounts(+balance), tasks, prevs }`. Les soldes EB sont récupérés en parallèle via `_getAccountBalances` (`UrlFetchApp.fetchAll`).
 

@@ -189,7 +189,7 @@ function deleteProp(source, key) {
  *   { message, icon, key }     — succès (nouveau message ou cache serveur servi)
  *   { error: string }          — erreur technique
  */
-function getGeminiInsight(clientKey, weatherLevels) {
+function getGeminiInsight(clientKey) {
   const apiKey = getProp('GEMINI_API_KEY');
   if (!apiKey) return { noKey: true };
 
@@ -225,7 +225,6 @@ function getGeminiInsight(clientKey, weatherLevels) {
       Math.round(cur.budget  || 0),
       Math.round(cur.lep     || 0),
       Math.round(cur.la      || 0),
-      Math.round(cur.csl     || 0),
       daysLeft,
     ].join('|');
 
@@ -233,23 +232,18 @@ function getGeminiInsight(clientKey, weatherLevels) {
     if (clientKey && clientKey === inputKey) return { cached: true, key: inputKey };
 
     // ── 4. Nouvelles données → appel Gemini ──────────────────────────────
-    const rj        = cur.budgetInit ? cur.budgetInit / daysInMonth : 0;
     const margeJour = (cur.budget || 0) / daysLeft;
-    const ratio     = rj > 0 ? margeJour / rj : ((cur.budget || 0) < 0 ? -1 : 2);
-    const weather   = weatherLevels ? weatherLevels.find(w => ratio < w.max) || weatherLevels[weatherLevels.length - 1] : {icon: '', label: ''};
-    const cslN      = CSL_NAME || 'CSL';
     const f         = v => (v !== null && v !== undefined) ? Math.round(v) + ' €' : '—';
 
     const prompt = [
-      `Tu es expert comptable et mascotte (paresseux) pour l\'application ${APP}.`,
+      `Tu es expert comptable.`,
       `Situation budgétaire du mois ${cur.month} :`,
-      `- Météo : ${weather.icon} ${weather.label} (ratio ${Math.round(ratio * 100)} %)`,
       `- Solde disponible : ${f(cur.budget)}`,
       `- ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''} dans le mois`,
       `- Marge par jour : ${f(margeJour)}`,
-      `- Épargne : LEP ${f(cur.lep)} · LA ${f(cur.la)} · ${cslN} ${f(cur.csl)}`,
+      `- Épargne : LEP ${f(cur.lep)} · LA ${f(cur.la)}`,
       '',
-      'Génère un message d\'encouragement de 1 à 2 phrases, concis et bienveillant.',
+      'Ecrit un message d\'encouragement sous forme de conseil, concis et bienveillant.',
       'Réponds sans utiliser markdown.',
     ].join('\n');
 
