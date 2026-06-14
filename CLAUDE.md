@@ -9,18 +9,18 @@ Toujours utiliser "Alfred" dans le code et les messages. Répondre en **françai
 
 ## Stack
 
-| Couche | Technologie |
-|---|---|
-| Backend | `gas/Alfred.js` — Google Apps Script (Web App, `executeAs: USER_ACCESSING`, `access: ANYONE`) |
-| Frontend | `gas/**/*.html` — HtmlService SPA, servie dans une iframe sandbox |
-| Tests | Jest via `__tests__/` — backend (`gas-env.js`) + client (`client-env.js`), tous deux par `vm.runInContext` |
-| CI/Deploy | `clasp` + GitHub Actions (`ci.yml`, `deploy.yml`, `deploy-dev.yml`), creds via secret `CLASPRC_JSON` |
+| Couche    | Technologie                                                                                                |
+| --------- | ---------------------------------------------------------------------------------------------------------- |
+| Backend   | `gas/Alfred.js` — Google Apps Script (Web App, `executeAs: USER_ACCESSING`, `access: ANYONE`)              |
+| Frontend  | `gas/**/*.html` — HtmlService SPA, servie dans une iframe sandbox                                          |
+| Tests     | Jest via `__tests__/` — backend (`gas-env.js`) + client (`client-env.js`), tous deux par `vm.runInContext` |
+| CI/Deploy | `clasp` + GitHub Actions (`ci.yml`, `deploy.yml`, `deploy-dev.yml`), creds via secret `CLASPRC_JSON`       |
 
 ---
 
 ## Structure des fichiers (`gas/` = `rootDir` clasp)
 
-```
+```_
 gas/
 ├── Alfred.js              ← backend : endpoints Web App + CRUD Sheets + forecast + Enable Banking
 ├── appsscript.json        ← manifest (Advanced Service: Tasks v1)
@@ -58,6 +58,7 @@ Modaux clés : `Meteo, MonthTrans, Transaction, Payday, PrevLine, Connect, Accou
 ## Architecture JS client (`scripts/`)
 
 ### État global (`Constantes.html`)
+
 ```js
 STATE          // prefs UI (window.ALFRED_PREFS) + hideAmounts éphémère (jamais persisté)
 _meteo         // { ratio, weather, budget, budgetInit }
@@ -71,6 +72,7 @@ TRANS_LIMIT · RULE_COLORS (Besoins/Envies/Epargne) · MOIS · WEATHER
 ```
 
 ### Patterns établis
+
 - **Modaux** : slide horizontal (`translateX`), pile `_modal.stack` + `history.pushState` (back Android via popstate). `_openModal(name)` / `_bindModal(name)` (bind `<nom>-back`).
 - **Swipe-to-reveal** edit/delete : `makeSwipeable(row, { onEdit, onDelete })` (transactions + charges). **Tap simple** révèle/masque aussi les boutons. Lignes archivées (`archived:true`) non swipeables.
   - CSS **`touch-action: pan-y`** obligatoire sur `.month-trans-item` / `.prev-item` (sinon Chromium annule le geste horizontal).
@@ -83,7 +85,8 @@ TRANS_LIMIT · RULE_COLORS (Besoins/Envies/Epargne) · MOIS · WEATHER
 - **Skeletons** : `_showSkeleton(id, kind)` + `_resetDonut()` (appelés par `loadAppData`).
 
 ### Flux de chargement
-```
+
+```_
 loadAppData() → getAllData() → _applyAllData(data)
   → renderDonut · applyForecast (renderBalances/renderMeteo/renderForecast/_renderTransList)
   → renderLinkedAccountCards · renderTasks (+ _updateTaskBadge) · renderPrevList · _maybeShowGemini
@@ -94,40 +97,50 @@ loadAppData() → getAllData() → _applyAllData(data)
 ## Architecture backend (`Alfred.js`)
 
 ### Multi-user
+
 - Chaque utilisateur enregistre **son** classeur : `USER_PROPS.getProperty('alfred_sheet_id')` → `TABS = SpreadsheetApp.openById(id)`. Si absent → `doGet` sert `Setup.html`.
 - **Onboarding** : `createSheetFromTemplate()` copie le modèle (ScriptProp **`ALFRED_TEMPLATE_ID`**, partagé lecture seule) via `DriveApp.makeCopy`, stocke l'ID auto, retourne `{ success, title, id, url }`. Le Setup ouvre l'app via un lien `target="_top"` (la nav top auto est bloquée dans l'iframe sandbox).
 
 ### Propriétés (Script vs User)
+
 - **UserProperties** (par compte) : `alfred_sheet_id`, prefs `alfred_*`, comptes épargne `LEP_*/LA_*/CSL_NAME`, Enable Banking `EB_*`.
 - **ScriptProperties** (partagées) : `GEMINI_API_KEY`, `CACHE_TTL`, `ALFRED_OWNER`, `ALFRED_TEMPLATE_ID`.
 - `getUserProp(key, fallback)` : UserProps → fallback ScriptProps (migration) → défaut.
 - Modal « Paramètres » : `getAllProps()` (ScriptProps visibles **owner uniquement** = `userEmail() === ALFRED_OWNER`), `setAnyProp(source, key, value)`, `deleteProp(source, key)`.
 
 ### Endpoints Web App (via `google.script.run`)
+
 `getAllData` (tout en un appel), `addTransaction / editTransactionByRow / deleteTransactionByRow`, `getPrevLines / addPrevLine / editPrevLine / deletePrevLine`, `getBudgetRules`, `getTransOptions`, `paydayWeb(salary)`, `getGeminiInsight(clientKey, weatherLevels)`, `getUserPrefs / setUserPref`, `importRevolutTransactionsWeb` (= `_importRevolutCore()` PUIS `getAllData()`), `getRevolutTasks / completeTask`, `createSheetFromTemplate`, `getSetupInfo`.
 
 `getAllData()` payload : `{ forecast, rules, options, savingsProps, mainAccountName, linkedAccountsCount, shownAccounts(+balance), tasks, prevs }`. Les soldes EB sont récupérés en parallèle via `_getAccountBalances` (`UrlFetchApp.fetchAll`).
 
 ### Helpers métier factorisés
+
 - `_parsePrevBounds(a,b,c)` + `prevLineApplies(bounds, absMonth)` : prédicat « ligne Prevs active » (réutilisé par `_collectClosingInfo`, `findPrevLines`, `indexPrev`).
 - `roundCent`, `toAbsMonth`, `parseMmYyyy`, `absMonthToText`, `clampStart/clampEnd`, `getPeriod`, `indexPrev/Tran/Epargne`, `budgetCalc`, `epargneCalc`, `checkCeiling`.
 
 ### Cache serveur (CacheService)
+
 - `forecast` + `budget_rules` : invalidés par `invalidateCache()` (appelé en fin de `getForecast()`).
 - `gemini_insight` : TTL 60s — **exclu** d'`invalidateCache()` (expire naturellement).
 - `CACHE_TTL` (défaut 60) parsé en number.
 
 ### Enable Banking (Open Banking PSD2) — clés `EB_*`
+
 Flow via modal Connect (4 étapes, country FR, ASPSP Revolut) :
+
 1. Bearer Token (portail) · 2. `registerEnableBankingApp` (génère RSA + cert X.509, `POST /applications`, puis `activateAppEB`) · 3. `activateAppEB` (`POST /link_accounts`) · 4. `setupEnableBankingWeb` (`POST /auth` → OAuth → `doGet(?code=)` → `_exchangeEnableBankingCode` → session + comptes).
+
 - `_enableBankingHeaders()` construit le JWT RS256 inline. `_ebFetchJson(url, opts)` / `_extractAccounts(body)` mutualisent les appels.
 - `_storeAccounts` choisit comme `EB_ACCOUNT_ID` le **premier compte avec IBAN** (récupéré via `/accounts/{uid}/details`).
 - Endpoints : `EB_API_SUB_ENDPOINT = https://api.enablebanking.com` (PSD2) · `EB_API_COM_ENDPOINT = https://enablebanking.com/api` (portail).
 
 ### Préférences UI (`ALFRED_PREF_DEFAULTS`)
+
 ```js
 { lightTheme: false, hideSplash: false, autoImportRevolut: false, hideNavLabels: false, transLimit: 3 }
 ```
+
 Toutes les valeurs par défaut = toggle **OFF**.
 
 ---
@@ -146,6 +159,7 @@ Règles budgétaires : `Besoins · Envies · Epargne · Dette` (dropdowns Prevs/
 ## Gemini Insight
 
 Cache localStorage `alfred_gemini_cache` : `{ key, message, ts }`.
+
 - Clé = `"MM/YYYY|budget|lep|la|csl|daysLeft"`, construite inline dans `getGeminiInsight`.
 - Si `clientKey === inputKey` (données inchangées) → `{ cached: true }`, pas d'appel API.
 - Cache serveur `gemini_insight` TTL 60s. Tier gratuit : 15 RPM / 1 500 RPD.
@@ -156,7 +170,7 @@ Cache localStorage `alfred_gemini_cache` : `{ key, message, ts }`.
 
 - **`__tests__/helpers/gas-env.js`** : charge `gas/Alfred.js` en `vm.runInContext` avec stubs GAS (SpreadsheetApp, PropertiesService partagé, CacheService, UrlFetchApp via `_setFetch`…). Expose les `function` (pas les `const`).
 - **`__tests__/helpers/client-env.js`** : charge `Constantes.html` + `Helpers.html` (pas `Script.html`) avec stubs DOM/window/localStorage. Expose `fmt, escHtml, cleanTitle, fmtMonth`, utils dates, `logoSpinner` + consts via épilogue (`__STATE`, `__MOIS`…).
-- Suites : pipeline calcul (utils, budgetCalc, epargneCalc, index*, checkCeiling, findPrevLines, geminiInsight) + props/cache/EB-helpers/bounds + client helpers.
+- Suites : pipeline calcul (utils, budgetCalc, epargneCalc, index\*, checkCeiling, findPrevLines, geminiInsight) + props/cache/EB-helpers/bounds + client helpers.
 - **Limitation coverage** : `vm.runInContext` n'est pas instrumenté par istanbul → `npm run test:cov` ne reporte que les helpers, pas `Alfred.js`. Coverage = manuelle/fonctionnelle.
 
 ---
@@ -164,15 +178,19 @@ Cache localStorage `alfred_gemini_cache` : `{ key, message, ts }`.
 ## Règles absolues
 
 ### Ne JAMAIS faire sans signaler
+
 - Modifier une valeur littérale (couleur, montant, label, URL, taux) — montrer avant/après et demander validation avant de toucher.
 
-### Tests
-- `npm test` **uniquement si `gas/Alfred.js` ou `gas/scripts/Helpers.html` est modifié** (la CI le détecte via `grep '^gas/Alfred\.js$'`).
+### Tests - règles
+
+- `npm test` **uniquement si `gas/Alfred.js` est modifié** (la CI le détecte via `grep '^gas/Alfred\.js$'`).
 
 ### Commits
+
 - Toujours proposer un message de commit court à la fin de chaque modification ou série.
 
 ### Style
+
 - Réponses courtes et directes. Pas de verbosité, pas de suggestions non sollicitées.
 - Emmanuel fait souvent ses propres ajustements visuels/UX/refactors après génération — ne pas s'en étonner ; relire les fichiers avant d'éditer.
 - Il teste en live sur le déploiement GAS et donne un feedback précis.
