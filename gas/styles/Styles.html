@@ -223,6 +223,14 @@
   .balance-na { color: var(--clr-muted); font-size: 1.4rem; }
 
   /* ── Comptes Enable Banking ───────────────────────────────────── */
+  #linked-account-cards {
+    display: none;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  #linked-account-cards.is-visible {
+    display: flex;
+  }
   .account-name-label {
     font-size: .72rem;
     color: var(--clr-muted);
@@ -836,7 +844,7 @@
   }
   .month-trans-item:last-child { border-bottom: none; }
   /* Swipeable : main + actions glissent ensemble */
-  .trans-slider {
+  .swipe-slider {
     display: flex;
     transition: transform .25s cubic-bezier(0.32, 0.72, 0, 1);
     transform: translateX(0);
@@ -851,11 +859,11 @@
     padding: 10px 4px;
     overflow: hidden;
   }
-  .trans-actions {
+  .swipe-actions {
     flex: 0 0 96px;
     display: flex;
   }
-  .trans-edit, .trans-delete {
+  .swipe-edit, .swipe-del {
     flex: 1;
     border: none;
     cursor: pointer;
@@ -865,11 +873,11 @@
     justify-content: center;
     transition: background .15s;
   }
-  .trans-edit   { background: var(--clr-primary-soft); color: var(--clr-primary); }
-  .trans-edit:hover   { background: var(--clr-primary-edge); }
-  .trans-delete { background: var(--clr-danger-soft);  color: var(--clr-danger); }
-  .trans-delete:hover { background: var(--clr-danger-edge); }
-  .month-trans-item.is-revealed .trans-slider { transform: translateX(-96px); }
+  .swipe-edit   { background: var(--clr-primary-soft); color: var(--clr-primary); }
+  .swipe-edit:hover   { background: var(--clr-primary-edge); }
+  .swipe-del { background: var(--clr-danger-soft);  color: var(--clr-danger); }
+  .swipe-del:hover { background: var(--clr-danger-edge); }
+  .month-trans-item.is-revealed .swipe-slider { transform: translateX(-96px); }
   .month-trans-date  { font-size: .72rem; color: var(--clr-muted); flex-shrink: 0; width: 32px; }
   .month-trans-body  { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .month-trans-label { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1313,7 +1321,7 @@
     transition: opacity .25s;
     touch-action: pan-y; /* réserve l'horizontal au swipe (sinon Chromium annule le geste) */
   }
-  .prev-item.is-revealed .trans-slider { transform: translateX(-96px); }
+  .prev-item.is-revealed .swipe-slider { transform: translateX(-96px); }
   /* trans-main en contexte prev : flex row accent + body */
   .prev-main {
     padding: 0 !important;
