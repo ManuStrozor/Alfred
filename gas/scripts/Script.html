@@ -1,26 +1,6 @@
 <script>
   'use strict';
 
-  /* ══ Toast ═════════════════════════════════════════════════════════
-     File d'attente : les toasts s'affichent séquentiellement.       */
-  function showToast(msg, duration = 3000) {
-    _toast.queue.push({ msg, duration });
-    _drainToast();
-  }
-
-  function _drainToast() {
-    if (_toast.busy || !_toast.queue.length) return;
-    _toast.busy = true;
-    const { msg, duration } = _toast.queue.shift();
-    const el = $('toast');
-    el.textContent = msg;
-    el.classList.add('show');
-    setTimeout(_ => {
-      el.classList.remove('show');
-      setTimeout(_ => { _toast.busy = false; _drainToast(); }, _toast.GAP);
-    }, duration);
-  }
-
   /* ══ Navigation ════════════════════════════════════════════════════
      Commute entre les pages, charge les données au premier accès.   */
   /** Affichage visuel de la page — sans toucher à l'historique. */
@@ -174,22 +154,21 @@
   function _transItemHtml(r) {
     const sub = [r.rule, r.category].filter(Boolean).join(' · ') || '—';
     // Lignes archivées (mois clôturé rouvert) : lecture seule, pas d'édition/suppression
-    return `<li class="month-trans-item" data-row="${r.row}"${r.archived ? ' data-archived="1"' : ''}>
-      <div class="trans-slider">
-        <div class="trans-main">
-          <span class="month-trans-date">${escHtml(r.date)}</span>
-          <div class="month-trans-body">
-            <span class="month-trans-label">${STATE.hideAmounts ? '•'.repeat(15) : escHtml(r.label)}</span>
-            <span class="month-trans-sub">${STATE.hideAmounts ? '••••• · •••••' : escHtml(sub)}</span>
+    return `
+      <li class="month-trans-item" data-row="${r.row}"${r.archived ? ' data-archived="1"' : ''}>
+        <div class="swipe-slider">
+          <div class="trans-main">
+            <span class="month-trans-date">${escHtml(r.date)}</span>
+            <div class="month-trans-body">
+              <span class="month-trans-label">${escHtml(r.label, true)}</span>
+              <span class="month-trans-sub">${escHtml(sub, true)}</span>
+            </div>
+            <span class="month-trans-amount ${r.amount >= 0 ? 'positive' : 'negative'}">${fmt(r.amount)}</span>
           </div>
-          <span class="month-trans-amount ${r.amount >= 0 ? 'positive' : 'negative'}">${fmt(r.amount)}</span>
+          ${swipeActionsDiv}
         </div>
-        ${r.archived ? '' : `<div class="trans-actions">
-          <button class="trans-edit"   type="button" aria-label="Modifier">✏️</button>
-          <button class="trans-delete" type="button" aria-label="Supprimer">🗑️</button>
-        </div>`}
-      </div>
-    </li>`;
+      </li>
+    `;
   }
 
   function _renderTransList(listId, limit) {
@@ -211,6 +190,7 @@
     options.rules.forEach(r      => $('tx-rule').appendChild(new Option(r, r)));
     options.categories.forEach(c => $('tx-category').appendChild(new Option(c, c)));
     renderDonut(rules);
+    evaluateExpense();
     applyForecast(forecast);
 
     if (shownAccounts) _cache.balances = shownAccounts;
@@ -235,13 +215,14 @@
       card.className = 'card card-account';
       card.innerHTML = `
         <div class="card-title">${escHtml(a.name || 'Compte')}</div>
-        <div class="account-name-label">${escHtml(a.currency || '')}</div>
+        <div class="account-name-label">${escHtml(a.currency)}</div>
         <div class="balance-hero ${(a.balance !== null && a.balance < 0) ? 'negative' : ''}">
           ${a.balance !== null ? fmt(a.balance) : '<span class="balance-na">—</span>'}
         </div>
       `;
       container.appendChild(card);
     });
+    container.classList.add('is-visible');
   }
 
   /** Applique le résultat d'un import Revolut. */
@@ -255,14 +236,21 @@
 
   function loadAppData() {
     _showSkeleton('budget-value', 'hero');
+    _showSkeleton('goal-line', 'sub');
     $('meteo-line').classList.remove('is-visible');
+    $('linked-account-cards').classList.remove('is-visible');
     _showSkeleton('recent-trans-list', 'li');
+    _showSkeleton('eval-result');
     _showSkeleton('forecast-list', 'li');
     _showSkeleton('charges-list');
     _showSkeleton('task-list-container');
     _resetDonut();
 
-    const onLoadError = _ => { $('budget-value').textContent = '—'; _ptrFinish(); };
+    const onLoadError = _ => {
+      $('budget-value').textContent = '—';
+      evaluateExpense();
+      _ptrFinish();
+    };
 
     if (STATE.autoImportRevolut) {
       runner('Auto-import', _onImportSuccess, _ => {
@@ -490,11 +478,11 @@
 
 
   function makeSwipeable(row, { onEdit, onDelete } = {}) {
-    const slider = row.querySelector('.trans-slider');
+    const slider = row.querySelector('.swipe-slider');
     let startX = null, startY = null, dragging = false;
 
     row.addEventListener('pointerdown', e => {
-      if (e.target.closest('.trans-actions')) return;
+      if (e.target.closest('.swipe-actions')) return;
       startX = e.clientX;
       startY = e.clientY;
       dragging = false;
@@ -543,11 +531,11 @@
     };
 
     const rowIndex = parseInt(row.dataset.row, 10);
-    row.querySelector('.trans-edit').addEventListener('click', e => {
+    row.querySelector('.swipe-edit').addEventListener('click', e => {
       e.stopPropagation();
       (onEdit ?? (_ => openEditTransaction(rowIndex)))();
     });
-    row.querySelector('.trans-delete').addEventListener('click', e => {
+    row.querySelector('.swipe-del').addEventListener('click', e => {
       e.stopPropagation();
       (onDelete ?? (_ => runner('Suppression', onSuccess).deleteTransactionByRow(rowIndex)))();
     });
@@ -869,7 +857,6 @@
       showToast('✅ Enregistré. Patientez...');
       _cache.props = null;
       _cache.balances = data;
-      //runner('Data', _applyAllData).getAllData();
       renderLinkedAccountCards(data);
       setTimeout(closeAll, 1500);
     }, restore).setShownAccounts(uids);
@@ -1579,13 +1566,14 @@
       ? (line.end ? `${line.start} → ${line.end}` : `dès ${line.start}`)
       : (line.end ? `jusqu'à ${line.end}` : '');
 
-    return `<div class="prev-item${active ? ' is-active' : ''}" data-row="${line.row}" data-label="${escHtml(line.label || '')}">
-      <div class="trans-slider">
+    return `
+    <div class="prev-item${active ? ' is-active' : ''}" data-row="${line.row}" data-label="${escHtml(line.label)}">
+      <div class="swipe-slider">
         <div class="trans-main prev-main">
-          <div class="prev-accent" style="background:${color}">${line.rule ? escHtml(line.rule) : ''}</div>
+          <div class="prev-accent" style="background:${color}">${escHtml(line.rule)}</div>
           <div class="prev-body">
             <div class="prev-top">
-              <span class="prev-label">${STATE.hideAmounts ? '•'.repeat(15) : escHtml(line.label || line.type || '—')}</span>
+              <span class="prev-label">${escHtml(line.label || line.type, true)}</span>
               <span class="prev-amount ${cls}">${fmt(line.amount)}</span>
             </div>
             <div class="prev-meta">
@@ -1596,12 +1584,10 @@
             </div>
           </div>
         </div>
-        <div class="trans-actions">
-          <button class="trans-edit"   type="button" aria-label="Modifier">✏️</button>
-          <button class="trans-delete" type="button" aria-label="Supprimer">🗑️</button>
-        </div>
+        ${swipeActionsDiv}
       </div>
-    </div>`;
+    </div>
+    `;
   }
 
   /* ── Formulaire add/edit ── */
