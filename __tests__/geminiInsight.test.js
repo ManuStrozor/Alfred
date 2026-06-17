@@ -73,12 +73,14 @@ describe('getGeminiInsight', () => {
     expect(result.key).toBe(key);
   });
 
-  test('Cas 4 — Cache expiré + même clé client (données inchangées) → { cached: true }', () => {
+  test('Cas 4 — Cache expiré + même clé client → appel Gemini quand même (optim désactivée)', () => {
     const key = expectedKey();
-    const g   = setup(); // cache vide → expiré
+    const g   = setup({ fetchResponse: geminiOkResponse('Réponse Gemini') });
 
     const result = g.getGeminiInsight(key);
-    expect(result).toEqual({ cached: true, key });
+    // L'optimisation "données inchangées → { cached: true }" est désactivée (&& false)
+    expect(result.message).toBe('Réponse Gemini');
+    expect(result.apiCalled).toBe(true);
   });
 
   test('Cas 5 — Cache expiré + clé différente → appel API Gemini réel', () => {

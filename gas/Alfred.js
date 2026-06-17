@@ -797,6 +797,7 @@ function _getFullForecast() {
 /** Transactions du mois courant (b_date), triées du plus récent au plus ancien. */
 function _getMonthTransactions() {
   const bDate = BUD_DATE.getValue();
+  if (!(bDate instanceof Date)) return [];
   const year  = bDate.getFullYear();
   const month = bDate.getMonth();
 
