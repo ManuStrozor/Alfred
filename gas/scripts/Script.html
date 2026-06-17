@@ -741,12 +741,7 @@
     if (panel.classList.contains('is-visible')) _syncMtFilterPanel();
   });
 
-  $All('#mt-rule-pills .filter-rule-pill').forEach(btn =>
-    btn.addEventListener('click', _ => {
-      $All('#mt-rule-pills .filter-rule-pill').forEach(b => b.classList.remove('is-active'));
-      btn.classList.add('is-active');
-    })
-  );
+  _bindSingleSelectPills('#mt-rule-pills .filter-rule-pill');
 
   $('btn-mt-filter-apply').addEventListener('click', _ => {
     _mtFilters.rule = $('mt-rule-pills').querySelector('.is-active')?.dataset.rule || '';
@@ -835,9 +830,7 @@
 
   $('btn-accounts-refresh').addEventListener('click', e => {
     const btn = e.target;
-    const prev = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = logoSpinner();
-    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const restore = _spinBtn(btn);
     runner('Refresh accounts', data => {
       restore();
       if (data.error) { showToast('❌ ' + data.error); return; }
@@ -848,10 +841,8 @@
 
   $('btn-accounts-save').addEventListener('click', e => {
     const btn = e.target;
-    const prev = btn.innerHTML;
     const uids = [...$All('.acc-toggle:checked')].map(el => el.dataset.uid);
-    btn.disabled = true; btn.innerHTML = logoSpinner();
-    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const restore = _spinBtn(btn);
     runner('Accounts', data => {
       restore();
       showToast('✅ Enregistré. Patientez...');
@@ -889,9 +880,7 @@
    * notifie via toast (10 s). invoke(r) lance l'appel sur le runner ; onOk(data) traite le succès.
    */
   function _runConnectStep({ btn, invoke, onOk }) {
-    const prev = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = logoSpinner();
-    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const restore = _spinBtn(btn);
     invoke(runner('Enable Banking',
       data => {
         restore();
@@ -1141,10 +1130,8 @@
   })();
 
   $('btn-import-revolut').addEventListener('click', e => {
-    const btn  = e.target;
-    const prev = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = logoSpinner();
-    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const btn = e.target;
+    const restore = _spinBtn(btn);
     runner('Import transactions', result => {
       restore();
       _onImportSuccess(result);
@@ -1178,9 +1165,7 @@
 
     const editing = _trans.editingRow !== null;
     const btn = $('btn-add');
-    const prev = editing ? 'Enregistrer' : 'Ajouter';
-    btn.disabled = true; btn.innerHTML = logoSpinner();
-    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const restore = _spinBtn(btn);
     const onSuccess = data => {
       restore();
       showToast('✅ Transaction ' + (editing ? 'modifiée' : 'ajoutée'));
@@ -1357,9 +1342,7 @@
       showToast('⚠️ Montant de salaire invalide.');
       return;
     }
-    const prev = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = logoSpinner();
-    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const restore = _spinBtn(btn);
     runner('Clôture', result => {
       restore();
       closeAll();
@@ -1465,12 +1448,7 @@
       b.classList.toggle('is-active', b.dataset.rule === _charges.filters.rule));
   }
 
-  $All('#filter-rule-pills .filter-rule-pill').forEach(btn =>
-    btn.addEventListener('click', _ => {
-      $All('#filter-rule-pills .filter-rule-pill').forEach(b => b.classList.remove('is-active'));
-      btn.classList.add('is-active');
-    })
-  );
+  _bindSingleSelectPills('#filter-rule-pills .filter-rule-pill');
 
   $('btn-filter-apply').addEventListener('click', _ => {
     _charges.filters.month = $('filter-month').value;
@@ -1639,12 +1617,7 @@
 
   $('pl-sign-btn').addEventListener('click', _ => { _charges.sign *= -1; _updateSignBtn(); });
 
-  $All('#pl-rule-pills .pl-rule-pill').forEach(btn =>
-    btn.addEventListener('click', _ => {
-      $All('#pl-rule-pills .pl-rule-pill').forEach(b => b.classList.remove('is-active'));
-      btn.classList.add('is-active');
-    })
-  );
+  _bindSingleSelectPills('#pl-rule-pills .pl-rule-pill');
 
   $All('#pl-months-pills .pl-month-pill').forEach(btn =>
     btn.addEventListener('click', _ => btn.classList.toggle('is-active'))
@@ -1675,10 +1648,8 @@
 
     if (!data.label && !data.amount) { showToast('⚠️ Libellé ou montant requis'); return; }
 
-    const btn  = $('btn-save-prev');
-    const prev = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = logoSpinner();
-    const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+    const btn = $('btn-save-prev');
+    const restore = _spinBtn(btn);
     const onSuccess = forecast => {
       restore();
       applyForecast(forecast);

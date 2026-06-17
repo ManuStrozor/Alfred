@@ -105,4 +105,20 @@
         </svg>
         `;
     }
+
+    function _spinBtn(btn) {
+        const prev = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = logoSpinner();
+        return _ => { btn.disabled = false; btn.innerHTML = prev; };
+    }
+
+    function _bindSingleSelectPills(selector) {
+        $All(selector).forEach(btn =>
+            btn.addEventListener('click', _ => {
+                $All(selector).forEach(b => b.classList.remove('is-active'));
+                btn.classList.add('is-active');
+            })
+        );
+    }
 </script>

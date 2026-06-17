@@ -872,12 +872,12 @@ function _listFromValidation(tab, col) {
   if (!validation) return [];
   const type   = validation.getCriteriaType();
   const values = validation.getCriteriaValues();
-    if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
-      return values[0] || [];
-    }
-    if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE) {
-      return values[0].getValues().flat().filter(v => v !== '');
-    }
+  if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
+    return values[0] || [];
+  }
+  if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE) {
+    return values[0].getValues().flat().filter(v => v !== '');
+  }
   return [];
 }
 
@@ -978,10 +978,6 @@ function deletePrevLine(rowIndex) {
   return _getFullForecast();
 }
 
-/**
- * Retourne les tâches Google Tasks dont le titre contient "Revolut" (non terminées).
- * @returns {{ id: string, title: string, notes: string }[]}
- */
 /** Itère sur toutes les pages de Tasks.Tasks.list('@default') et retourne le tableau plat. */
 function _listTasks(extraOpts = {}) {
   const items = [];
@@ -1230,12 +1226,7 @@ function getPeriod(str) {
 
 /** Génère un tableau [[Date], …] pour chaque mois de la période, à écrire en colonne A. */
 function getMonthsText(date, period) {
-  let months = new Array(period);
-
-  for(let i = 0; i < period; i++) {
-    months[i] = [new Date(date.getFullYear(), date.getMonth()+1+i, 1)];
-  }
-  return months;
+  return Array.from({ length: period }, (_, i) => [new Date(date.getFullYear(), date.getMonth() + 1 + i, 1)]);
 }
 
 /**
@@ -1653,8 +1644,7 @@ function getLinkedAccounts() {
 function setShownAccounts(uids) {
   USER_PROPS.setProperty('EB_SHOWN_ACCOUNTS', JSON.stringify(uids));
   const allAccounts = JSON.parse(USER_PROPS.getProperty('EB_ALL_ACCOUNTS') || '[]');
-  const shownUids = JSON.parse(USER_PROPS.getProperty('EB_SHOWN_ACCOUNTS') || '[]');
-  return _getAccountBalances(allAccounts.filter(({ uid }) => shownUids.includes(uid)));
+  return _getAccountBalances(allAccounts.filter(({ uid }) => uids.includes(uid)));
 }
 
 /**
