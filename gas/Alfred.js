@@ -209,7 +209,8 @@ function getGeminiInsight(clientKey) {
   const MODELS = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
 
   try {
-    const fc  = getCached('forecast', _getFullForecast);
+    const fc  = getFullForecast();
+    const trs = _getMonthTransactions().filter(tr => tr.category?.length > 0);
     const cur = fc?.months?.find(m => m.isCurrent);
     if (!cur) return { error: 'Mois courant introuvable dans le prévisionnel.' };
 
@@ -228,23 +229,32 @@ function getGeminiInsight(clientKey) {
       daysLeft,
     ].join('|');
 
-    // ── 3. Données inchangées → économiser l'appel API ────────────────────
-    if (clientKey && clientKey === inputKey) return { cached: true, key: inputKey };
+    // ── 3. Données inchangées → économiser l'appel API : disabled ────────────────────
+    if (clientKey && clientKey === inputKey && false) return { cached: true, key: inputKey };
 
     // ── 4. Nouvelles données → appel Gemini ──────────────────────────────
     const margeJour = (cur.budget || 0) / daysLeft;
     const f         = v => (v !== null && v !== undefined) ? Math.round(v) + ' €' : '—';
 
     const prompt = [
-      `Tu es expert comptable.`,
-      `Situation budgétaire du mois ${cur.month} :`,
-      `- Solde disponible : ${f(cur.budget)}`,
-      `- ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''} dans le mois`,
-      `- Marge par jour : ${f(margeJour)}`,
-      `- Épargne : LEP ${f(cur.lep)} · LA ${f(cur.la)}`,
+      `Tu es ${APP}, expert comptable, mascotte d'une app.`,
       '',
-      'Ecrit un message d\'encouragement sous forme de conseil, concis et bienveillant.',
-      'Réponds sans utiliser markdown.',
+      `Situation du mois ${cur.month} :`,
+      `- Solde actuel : ${f(cur.budget)}`,
+      `- ${daysLeft} jour${daysLeft > 1 ? 's' : ''} restant${daysLeft > 1 ? 's' : ''} dans le mois`,
+      `- Budget journalier : ${f(margeJour)}`,
+      (cur.lep + cur.la) > 0
+      ? `- Épargne : LEP ${f(cur.lep)} · Livret A ${f(cur.la)}`
+      : '- Aucune épargne !',
+      '',
+      'Transactions du mois :',
+      trs.map(tr => {
+        return `- ${tr.date} : ${f(tr.amount)} (${tr.category})`;
+      }).join('\n'),
+      '',
+      'Ecrit un message d\'encouragement sous forme de conseil (l\'astuce du jour).',
+      'N\'hesite pas à rappeler à l\'ordre si cela semble necessaire.',
+      'Réponds en 1 ou 2 phrases sans utiliser markdown.',
     ].join('\n');
 
     const payload = { contents: [{ parts: [{ text: prompt }] }] };

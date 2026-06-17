@@ -160,7 +160,7 @@ Règles budgétaires : `Besoins · Envies · Epargne · Dette` (dropdowns Prevs/
 
 Cache localStorage `alfred_gemini_cache` : `{ key, message, ts }`.
 
-- Clé = `"MM/YYYY|budget|lep|la|csl|daysLeft"`, construite inline dans `getGeminiInsight`.
+- Clé = `"MM/YYYY|budget|lep|la|daysLeft"`, construite inline dans `getGeminiInsight`.
 - Si `clientKey === inputKey` (données inchangées) → `{ cached: true }`, pas d'appel API.
 - Cache serveur `gemini_insight` TTL 60s. Tier gratuit : 15 RPM / 1 500 RPD.
 
