@@ -265,13 +265,22 @@
   .legend-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 4px 8px;
     font-size: .78rem;
     border-radius: 8px;
     padding: 3px 6px;
     margin: 0 -6px;
     transition: background .15s, opacity .2s;
     -webkit-tap-highlight-color: transparent;
+  }
+  /* Cible 50/30/20 : passe sous le label (2e ligne), aligné après la pastille */
+  .legend-target {
+    flex-basis: 100%;
+    margin-left: 17px;
+    font-size: .68rem;
+    color: var(--clr-muted);
+    font-variant-numeric: tabular-nums;
   }
   .legend-item.is-active {
     background: rgba(var(--surface-rgb), .07);

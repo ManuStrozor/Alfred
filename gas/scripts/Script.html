@@ -288,8 +288,14 @@
   }
 
   function renderDonut(rules) {
+    // Ordre d'affichage : Besoins, Dette, puis le reste (cf. RULE_ORDER) ; Reste/inconnus à la fin
+    rules = [...rules].sort((a, b) => {
+      const ia = RULE_ORDER.indexOf(a.label), ib = RULE_ORDER.indexOf(b.label);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
     _cache.rules = rules;
     const segEl    = $('donut-segments');
+    const targetEl = $('donut-target');
     const legendEl = $('donut-legend');
 
     const R    = 70, CX = 100, CY = 100;
@@ -302,6 +308,7 @@
     if (total <= 0) {
       _selectedRule = null;
       segEl.innerHTML = '';
+      targetEl.innerHTML = '';
       if (reste) _donutSetCenter(reste, total);
       legendEl.innerHTML = '<div class="empty-state" style="padding:12px 0;font-size:.82rem;">Données indisponibles</div>';
       return;
@@ -322,15 +329,52 @@
       return seg;
     }).join('');
 
+    // ── Anneau de référence : cible 50/30/20 adaptée ──────────────────
+    // Besoins + Dette sont subis → ancrés à leur réel ; le reste (Envies/Épargne) suit RULE_TARGETS.
+    const TR = 88, T_SW = 4, T_CIRC = 2 * Math.PI * TR;
+    const pctOf      = label => Math.max(0, rules.find(r => r.label === label)?.amount || 0) / total * 100;
+    const besoinsPct = pctOf('Besoins');
+    const dettePct   = pctOf('Dette');
+    const restePct   = Math.max(0, 100 - besoinsPct - dettePct);
+    const tWeight    = RULE_TARGETS.Envies + RULE_TARGETS.Epargne;
+    const targetSegs = [
+      { label: 'Besoins', pct: besoinsPct },
+      { label: 'Dette',   pct: dettePct },
+      { label: 'Envies',  pct: restePct * RULE_TARGETS.Envies  / tWeight },
+      { label: 'Epargne', pct: restePct * RULE_TARGETS.Epargne / tWeight },
+    ];
+    const targetByLabel = {};
+    let tCum = 0;
+    targetEl.innerHTML = targetSegs.map(s => {
+      targetByLabel[s.label] = s.pct;
+      const color = RULE_COLORS[s.label] || 'var(--clr-muted)';
+      const len   = (s.pct / 100) * T_CIRC;
+      const seg   = `<circle cx="${CX}" cy="${CY}" r="${TR}" fill="none"
+        stroke="${color}" stroke-width="${T_SW}" stroke-opacity="0.45"
+        stroke-dasharray="${len.toFixed(2)} ${T_CIRC.toFixed(2)}"
+        stroke-dashoffset="${(-tCum).toFixed(2)}"/>`;
+      tCum += len;
+      return seg;
+    }).join('');
+
     // Légende (clic géré par délégation, listener unique attaché à l'init)
     legendEl.innerHTML = rules.map(r => {
       if (r.label == 'Reste') return '';
       const color = RULE_COLORS[r.label] || 'var(--clr-muted)';
       const isNeg = r.amount < 0;
+      let targetHtml = '';
+      if (RULE_TARGETS[r.label] != null) {
+        const realPct = Math.round(Math.max(0, r.amount) / total * 100);
+        const tgtPct  = Math.round(targetByLabel[r.label] || 0);
+        const diff    = realPct - tgtPct;
+        const arrow   = diff > 2 ? '▲' : diff < -2 ? '▼' : '✓';
+        targetHtml = `<span class="legend-target">cible ${tgtPct}% ${arrow}</span>`;
+      }
       return `<div class="legend-item" data-rule="${r.label}" style="cursor:pointer;">
         <div class="legend-dot" style="background:${color};box-shadow:0 0 5px ${color};"></div>
         <span class="legend-label">${r.label}</span>
         <span class="legend-amount" style="color:${isNeg ? 'var(--clr-danger)' : 'var(--clr-text)'};">${fmt(r.amount)}</span>
+        ${targetHtml}
       </div>`;
     }).join('');
 
@@ -361,6 +405,7 @@
   /** Vide le donut (segments + centre) et affiche un skeleton dans la légende. */
   function _resetDonut() {
     $('donut-segments').innerHTML = '';
+    $('donut-target').innerHTML = '';
     $('donut-center-val').innerHTML = '';
     $('donut-center-pct').innerHTML = '';
     $('donut-center-lbl').innerHTML = '';

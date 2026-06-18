@@ -53,6 +53,13 @@
         Epargne: 'var(--neon-green)',
     };
 
+    // Cible 50/30/20 : Besoins + Dette sont subis (ancre = leur réel) ; le reste
+    // se répartit entre Envies/Épargne selon ce ratio (30:20 → 60%:40%).
+    const RULE_TARGETS = { Envies: 30, Epargne: 20 };
+
+    // Ordre d'affichage (donut + légende) : Dette juste après Besoins (toutes deux subies).
+    const RULE_ORDER = ['Besoins', 'Dette', 'Envies', 'Epargne'];
+
     const MOIS = [
         'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
         'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'
