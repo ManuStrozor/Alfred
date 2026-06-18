@@ -1,12 +1,11 @@
 'use strict';
 
 /**
- * Charge le JS client (Constantes.html + Helpers.html) dans un contexte vm isolé
- * avec des stubs DOM/window/localStorage minimaux — même approche que gas-env.js.
+ * Charge le JS client (gas/scripts/Script.html) dans un contexte vm isolé avec des
+ * stubs DOM/window/localStorage/google.script.run minimaux — même approche que gas-env.js.
  *
- * Script.html N'EST PAS chargé : il exécute du code top-level (listeners, IIFE
- * pull-to-refresh, loadAppData()) qui nécessiterait un DOM complet. On teste ici
- * uniquement les fonctions pures de Helpers (fmt, escHtml, dates…).
+ * Le top-level de Script.html s'exécute (IIFE, listeners, init) : les stubs doivent
+ * couvrir ce qu'il touche au chargement (google.script.run chaînable, DOM…).
  *
  * Limitation (comme gas-env) : les `function` déclarées sont exposées sur le contexte ;
  * les `const` (STATE, MOIS…) ne le sont pas → ré-exposées via un épilogue `this.__X = X`.
@@ -46,8 +45,20 @@ function loadClient({ prefs = {}, tab = null } = {}) {
     activeElement:    { blur() {} },
   };
 
+  // google.script.run : API chaînable factice — withSuccessHandler/withFailureHandler
+  // renvoient l'objet, les endpoints (getAllData…) = no-op (callbacks jamais déclenchés en test).
+  const gsRun = new Proxy({}, {
+    get: (_t, prop) =>
+      (prop === 'withSuccessHandler' || prop === 'withFailureHandler')
+        ? () => gsRun
+        : () => {},
+  });
+
   const ctx = {
-    window:       { ALFRED_PREFS: prefs },
+    window:       {
+      ALFRED_PREFS: prefs,
+      addEventListener() {}
+    },
     document,
     localStorage: {
       getItem:    k => (lsStore.has(k) ? lsStore.get(k) : null),
@@ -56,12 +67,11 @@ function loadClient({ prefs = {}, tab = null } = {}) {
     },
     history:      { state: null, pushState() {}, replaceState() {}, back() {}, go() {} },
     setTimeout:   () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
-    google:       { script: { run: {} } },
+    google:       { script: { run: gsRun } },
     console:      { log() {}, warn() {}, error() {} },
   };
 
-  const code = strip('gas/scripts/Constantes.html')
-             + '\n' + strip('gas/scripts/Helpers.html')
+  const code = strip('gas/scripts/Script.html')
              + '\n; this.__STATE = STATE; this.__MOIS = MOIS; this.__WEATHER = WEATHER; this.__RULE_COLORS = RULE_COLORS;';
 
   vm.createContext(ctx);

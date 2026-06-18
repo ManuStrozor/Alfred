@@ -1,6 +1,232 @@
 <script>
   'use strict';
 
+  const $ = id => document.getElementById(id);
+  const $All = cls => document.querySelectorAll(cls);
+
+  /* ══ Constantes / Variables ══════════════════════════════════════════════ */
+
+  const navBtns = $All('.nav-btn');
+
+  const swipeActionsDiv = `
+    <div class="swipe-actions">
+        <button class="swipe-edit" type="button" aria-label="Modifier">✏️</button>
+        <button class="swipe-del" type="button" aria-label="Supprimer">🗑️</button>
+    </div>
+    `;
+
+  const STATE = {
+    ...window.ALFRED_PREFS,
+    hideAmounts: false,
+  };
+  const TRANS_LIMIT = { MIN: 1, MAX: 5 };
+  const DAILY_GOAL = { MIN: 0, MAX: Infinity, STEP: 1 }; // objectif dépense/jour (€)
+  const savedTab = localStorage.getItem('alfred_tab');
+
+  const _toast = { GAP: 280, queue: [], busy: false };
+
+  let allMonths = [];
+  let cslName = '';
+  let _geminiDone = false;
+
+  const _meteo = {
+    ratio: null, weather: null,
+    budget: 0, budgetInit: 0
+  };
+
+  const _cache = { cur: null, rules: null, props: null };
+
+  const _trans = { items: [], editingRow: null };
+
+  const WEATHER = [
+    { max: 0, icon: '⛈️', label: 'Tempête', color: 'var(--clr-danger)' },
+    { max: 0.2, icon: '🌧️', label: 'Orage', color: 'var(--neon-orange)' },
+    { max: 0.5, icon: '🌦️', label: 'Pluie', color: '#ffb300' },
+    { max: 0.8, icon: '⛅', label: 'Éclarcie', color: 'var(--neon-blue)' },
+    { max: 1.1, icon: '🌤️', label: 'Soleil', color: 'var(--neon-green)' },
+    { max: Infinity, icon: '☀️', label: 'Grand soleil', color: '#e5b13d' }
+  ];
+
+  const RULE_COLORS = {
+    Besoins: 'var(--neon-blue)',
+    Envies: 'var(--neon-yellow)',
+    Epargne: 'var(--neon-green)',
+  };
+
+  // Cible 50/30/20 : Besoins + Dette sont subis (ancre = leur réel) ; le reste
+  // se répartit entre Envies/Épargne selon ce ratio (30:20 → 60%:40%).
+  const RULE_TARGETS = { Envies: 30, Epargne: 20 };
+
+  // Ordre d'affichage (donut + légende) : Dette juste après Besoins (toutes deux subies).
+  const RULE_ORDER = ['Besoins', 'Dette', 'Envies', 'Epargne'];
+
+  const MOIS = [
+    'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
+    'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'
+  ];
+
+  const _modal = {
+    stack: [],
+    ALL: [
+      'meteo', 'month-trans', 'menu',
+      'appearance', 'connect', 'accounts',
+      'transaction', 'payday', 'props',
+      'prev-line', 'charges', 'taches',
+      'outils', 'comptes', 'parametres',
+      'confidentialite', 'interface', 'systeme',
+      'profil'
+    ],
+  };
+
+  const _swipe = {
+    PX: 96,
+    row: null,
+  };
+
+  const _charges = {
+    lines: [],
+    types: [],
+    filters: { month: '', type: '', rule: '' },
+    loaded: false,
+    editingRow: null,
+    sign: -1
+  };
+
+  const _SPIN_MARK = "M 42 68 \
+    C 48 55 51 44 60 35 \
+    C 68 43 71 52 73 60 \
+    C 69 83 36 67 30 95";
+  const _SPIN_SHIELD = "M 23 84 \
+    C 17 69 10 48 14 27 \
+    C 28 23 48 20 60 10 \
+    C 73 20 90 23 107 27 \
+    C 109 48 105 74 91 94 \
+    L 79 71 \
+    L 91 94 \
+    C 81 108 72 112 60 118 \
+    C 50 114 44 109 38 104";
+
+  /* ══ Utilitaires ═════════════════════════════════════════════════════════ */
+
+  function fmt(v, compact = false) {
+    if (v === null) return '—';
+    if (STATE.hideAmounts) return compact ? '•••' : '••••• €';
+    const opts = compact
+      ? { maximumFractionDigits: 0 }
+      : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+    return new Intl.NumberFormat('fr-FR', opts).format(v) + (compact ? '' : ' €');
+  }
+
+  function escHtml(str, hidable = false) {
+    if (str === null) return '—';
+    if (STATE.hideAmounts && hidable) return '•'.repeat(str.length);
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function cleanTitle(title) {
+    return title.replace(/\s*\[#[0-9A-Z]{6}\]\s*$/, '').trim();
+  }
+
+  function fmtMonth(mmYyyy) {
+    const mm = mmYyyy.split('/')[0];
+    return MOIS[parseInt(mm, 10) - 1] ?? mmYyyy;
+  }
+
+  function _typewrite(el, text, onDone, speed = 28) {
+    let i = 0;
+    const tick = () => {
+      if (i < text.length) {
+        el.textContent += text[i++];
+        setTimeout(tick, speed);
+      }
+      else onDone?.();
+    };
+    tick();
+  }
+
+  function _absM(year, month0) { return year * 12 + month0; }
+
+  function _parsePrevDate(mmyyyy) {
+    if (!mmyyyy || !/^\d{2}\/\d{4}$/.test(mmyyyy)) return null;
+    const mm = +mmyyyy.slice(0, 2), yyyy = +mmyyyy.slice(3);
+    return _absM(yyyy, mm - 1);
+  }
+
+  function _absToMmYyyy(abs) {
+    return String(abs % 12 + 1).padStart(2, '0') + '/' + Math.floor(abs / 12);
+  }
+
+  function _absToLabel(abs) {
+    return MOIS[abs % 12] + ' ' + Math.floor(abs / 12);
+  }
+
+  function showToast(msg, duration = 3000) {
+    _toast.queue.push({ msg, duration });
+    _drainToast();
+  }
+
+  function _drainToast() {
+    if (_toast.busy || !_toast.queue.length) return;
+    _toast.busy = true;
+    const { msg, duration } = _toast.queue.shift();
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(_ => {
+      el.classList.remove('show');
+      setTimeout(_ => {
+        _toast.busy = false;
+        _drainToast();
+      }, _toast.GAP);
+    }, duration);
+  }
+
+  function runner(scope, onSuccess, onFailure, duration) {
+    let r = google.script.run;
+    if (onSuccess) r = r.withSuccessHandler(onSuccess);
+    r = r.withFailureHandler(err => {
+      if (onFailure) onFailure(err);
+      showToast('❌ ' + scope + (err?.message ? ' : ' + err.message : ''), duration);
+    });
+    return r;
+  }
+
+  function _showSkeleton(id, kind = 'box') {
+    $(id).innerHTML =
+      kind === 'hero' ? '<div class="skeleton skel-hero"></div><div class="skeleton skel-sub"></div>'
+        : kind === 'sub' ? '<div class="skeleton skel-sub"></div>'
+          : kind === 'li' ? '<li class="skeleton skel-box"></li>'
+            : '<div class="skeleton skel-box"></div>';
+  }
+
+  function logoSpinner(size = 20) {
+    return `
+    <svg class="logo-spin" viewBox="0 0 120 128" width="${size}" height="${size}" aria-hidden="true">
+        <path class="track" d="${_SPIN_MARK}"/><path class="track" d="${_SPIN_SHIELD}"/>
+        <path class="run" pathLength="100" d="${_SPIN_MARK}"/>
+        <path class="run" pathLength="100" d="${_SPIN_SHIELD}"/>
+    </svg>
+    `;
+  }
+
+  function _spinBtn(btn) {
+    const prev = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = logoSpinner();
+    return _ => { btn.disabled = false; btn.innerHTML = prev; };
+  }
+
+  function _bindSingleSelectPills(selector) {
+    $All(selector).forEach(btn =>
+      btn.addEventListener('click', _ => {
+        $All(selector).forEach(b => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+      })
+    );
+  }
+
   /* ══ Navigation ════════════════════════════════════════════════════
      Commute entre les pages, charge les données au premier accès.   */
   /** Affichage visuel de la page — sans toucher à l'historique. */
@@ -21,7 +247,7 @@
     } else {
       // Pages secondaires : push depuis Budget, replace entre pages secondaires
       if (history.state?.page) history.replaceState({ page: target }, '');
-      else                      history.pushState({ page: target }, '');
+      else history.pushState({ page: target }, '');
     }
     _showPage(target);
   }
@@ -38,16 +264,16 @@
     }
 
     // _meteo.budgetInit doit être assigné avant getDayMetrics (qui en dépend)
-    _meteo.budget      = budget;
-    _meteo.budgetInit  = budgetInit;
+    _meteo.budget = budget;
+    _meteo.budgetInit = budgetInit;
     const { jr, rj } = getDayMetrics();
-    const margeJour   = budget / jr;
-    const ratio       = rj > 0 ? margeJour / rj : (margeJour < 0 ? -1 : 2);
-    const w           = WEATHER.find(e => ratio < e.max);
-    _meteo.ratio       = ratio;
-    _meteo.weather     = w;
+    const margeJour = budget / jr;
+    const ratio = rj > 0 ? margeJour / rj : (margeJour < 0 ? -1 : 2);
+    const w = WEATHER.find(e => ratio < e.max);
+    _meteo.ratio = ratio;
+    _meteo.weather = w;
 
-    $('meteo-icon').textContent  = w.icon;
+    $('meteo-icon').textContent = w.icon;
     $('meteo-label').textContent = w.label;
     $('meteo-label').style.color = w.color;
     $('meteo-marge').textContent = fmt(Math.round(margeJour * 100) / 100) + '/j';
@@ -64,7 +290,7 @@
    * restant et indique si l'objectif tient jusqu'à la fin du mois.
    */
   function renderGoal(budget, jr) {
-    const el   = $('goal-line');
+    const el = $('goal-line');
     const goal = STATE.dailyGoal;
     if (!goal || goal <= 0 || STATE.hideAmounts || budget <= 0) {
       el.classList.remove('is-visible');
@@ -73,11 +299,11 @@
     const runway = Math.floor(budget / goal);
     if (runway >= jr) {
       el.textContent = `🎯 ${goal} €/j tenable jusqu'à la fin du mois`;
-      el.className   = 'goal-line is-visible ok';
+      el.className = 'goal-line is-visible ok';
     } else {
       const s = runway > 1 ? 's' : '';
       el.textContent = `🎯 ${goal} €/j : budget épuisé dans ${runway} jour${s}`;
-      el.className   = 'goal-line is-visible warn';
+      el.className = 'goal-line is-visible warn';
     }
   }
 
@@ -85,14 +311,14 @@
    * Retourne les métriques quotidiennes du mois courant utilisées par météo / éval.
    * `tomorrow=true` décale d'un jour pour les estimations "demain".
    */
-   function getDayMetrics({ tomorrow = false } = {}) {
+  function getDayMetrics({ tomorrow = false } = {}) {
     const [month, year] = allMonths[0].month.split('/').map(Number);
     const fDate = new Date(year, month - 1, 1);
     const today = new Date();
     const now = fDate > today ? fDate : today;
     const jdm = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const jr  = jdm - now.getDate() + 1 - (tomorrow ? 1 : 0);
-    const rj  = _meteo.budgetInit / jdm;
+    const jr = jdm - now.getDate() + 1 - (tomorrow ? 1 : 0);
+    const rj = _meteo.budgetInit / jdm;
     return { now, jdm, jr, rj };
   }
 
@@ -105,15 +331,15 @@
   }
 
   function applyForecast(data) {
-    allMonths    = data.months;
-    cslName      = data.cslName;
+    allMonths = data.months;
+    cslName = data.cslName;
     _trans.items = data.monthTransactions || [];
     const cur = allMonths.find(m => m.isCurrent) || allMonths[0] || {};
     const lbl = $('current-month-label');
     lbl.textContent = cur.month || '';
-    lbl.className   = 'month-label' + (cur.isForecast ? ' is-forecast' : '');
+    lbl.className = 'month-label' + (cur.isForecast ? ' is-forecast' : '');
     $('forecast-period-label').textContent = 'sur ' + data.periodText;
-    $('month-trans-title').textContent     = 'Transactions · ' + lbl.textContent;
+    $('month-trans-title').textContent = 'Transactions · ' + lbl.textContent;
     renderBalances(cur);
     _renderTransList('recent-trans-list', STATE.transLimit);
     renderForecast();
@@ -144,7 +370,7 @@
     };
 
     runner('Gemini', onSuccess, _splashHideGemini)
-    .getGeminiInsight(clientKey);
+      .getGeminiInsight(clientKey);
   }
 
 
@@ -187,7 +413,7 @@
     if (savingsProps) _cache.props = savingsProps;
     $('tx-rule').innerHTML = '<option value="">—</option>';
     $('tx-category').innerHTML = '<option value="">—</option>';
-    options.rules.forEach(r      => $('tx-rule').appendChild(new Option(r, r)));
+    options.rules.forEach(r => $('tx-rule').appendChild(new Option(r, r)));
     options.categories.forEach(c => $('tx-category').appendChild(new Option(c, c)));
     renderDonut(rules);
     evaluateExpense();
@@ -196,7 +422,7 @@
     if (shownAccounts) _cache.balances = shownAccounts;
     renderLinkedAccountCards(shownAccounts);
 
-    if (tasks)  renderTasks(tasks);
+    if (tasks) renderTasks(tasks);
     if (prevs) {
       _charges.lines = prevs.lines;
       _charges.types = prevs.types;
@@ -294,16 +520,16 @@
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
     _cache.rules = rules;
-    const segEl    = $('donut-segments');
+    const segEl = $('donut-segments');
     const targetEl = $('donut-target');
     const legendEl = $('donut-legend');
 
-    const R    = 70, CX = 100, CY = 100;
+    const R = 70, CX = 100, CY = 100;
     const CIRC = 2 * Math.PI * R;
 
-    const reste    = rules.find(r => r.label === 'Reste');
+    const reste = rules.find(r => r.label === 'Reste');
     const spending = rules.filter(r => r.label !== 'Reste' && r.amount > 0);
-    const total    = spending.reduce((s, r) => s + r.amount, 0) + Math.max(0, reste ? reste.amount : 0);
+    const total = spending.reduce((s, r) => s + r.amount, 0) + Math.max(0, reste ? reste.amount : 0);
 
     if (total <= 0) {
       _selectedRule = null;
@@ -319,8 +545,8 @@
     segEl.innerHTML = allSegs.map(r => {
       if (r.label == 'Reste') return '';
       const color = RULE_COLORS[r.label] || 'var(--clr-muted)';
-      const len   = (r.amount / total) * CIRC;
-      const seg   = `<circle class="donut-seg" data-rule="${r.label}" cx="${CX}" cy="${CY}" r="${R}" fill="none"
+      const len = (r.amount / total) * CIRC;
+      const seg = `<circle class="donut-seg" data-rule="${r.label}" cx="${CX}" cy="${CY}" r="${R}" fill="none"
         stroke="${color}" stroke-width="26"
         stroke-dasharray="${len.toFixed(2)} ${CIRC.toFixed(2)}"
         stroke-dashoffset="${(-cumulative).toFixed(2)}"
@@ -332,15 +558,15 @@
     // ── Anneau de référence : cible 50/30/20 adaptée ──────────────────
     // Besoins + Dette sont subis → ancrés à leur réel ; le reste (Envies/Épargne) suit RULE_TARGETS.
     const TR = 88, T_SW = 4, T_CIRC = 2 * Math.PI * TR;
-    const pctOf      = label => Math.max(0, rules.find(r => r.label === label)?.amount || 0) / total * 100;
+    const pctOf = label => Math.max(0, rules.find(r => r.label === label)?.amount || 0) / total * 100;
     const besoinsPct = pctOf('Besoins');
-    const dettePct   = pctOf('Dette');
-    const restePct   = Math.max(0, 100 - besoinsPct - dettePct);
-    const tWeight    = RULE_TARGETS.Envies + RULE_TARGETS.Epargne;
+    const dettePct = pctOf('Dette');
+    const restePct = Math.max(0, 100 - besoinsPct - dettePct);
+    const tWeight = RULE_TARGETS.Envies + RULE_TARGETS.Epargne;
     const targetSegs = [
       { label: 'Besoins', pct: besoinsPct },
-      { label: 'Dette',   pct: dettePct },
-      { label: 'Envies',  pct: restePct * RULE_TARGETS.Envies  / tWeight },
+      { label: 'Dette', pct: dettePct },
+      { label: 'Envies', pct: restePct * RULE_TARGETS.Envies / tWeight },
       { label: 'Epargne', pct: restePct * RULE_TARGETS.Epargne / tWeight },
     ];
     const targetByLabel = {};
@@ -348,8 +574,8 @@
     targetEl.innerHTML = targetSegs.map(s => {
       targetByLabel[s.label] = s.pct;
       const color = RULE_COLORS[s.label] || 'var(--clr-muted)';
-      const len   = (s.pct / 100) * T_CIRC;
-      const seg   = `<circle cx="${CX}" cy="${CY}" r="${TR}" fill="none"
+      const len = (s.pct / 100) * T_CIRC;
+      const seg = `<circle cx="${CX}" cy="${CY}" r="${TR}" fill="none"
         stroke="${color}" stroke-width="${T_SW}" stroke-opacity="0.45"
         stroke-dasharray="${len.toFixed(2)} ${T_CIRC.toFixed(2)}"
         stroke-dashoffset="${(-tCum).toFixed(2)}"/>`;
@@ -365,9 +591,9 @@
       let targetHtml = '';
       if (RULE_TARGETS[r.label] != null) {
         const realPct = Math.round(Math.max(0, r.amount) / total * 100);
-        const tgtPct  = Math.round(targetByLabel[r.label] || 0);
-        const diff    = realPct - tgtPct;
-        const arrow   = diff > 2 ? '▲' : diff < -2 ? '▼' : '✓';
+        const tgtPct = Math.round(targetByLabel[r.label] || 0);
+        const diff = realPct - tgtPct;
+        const arrow = diff > 2 ? '▲' : diff < -2 ? '▼' : '✓';
         targetHtml = `<span class="legend-target">cible ${tgtPct}% ${arrow}</span>`;
       }
       return `<div class="legend-item" data-rule="${r.label}" style="cursor:pointer;">
@@ -457,7 +683,7 @@
       showToast('✅ Tâche marquée terminée');
       renderTasks(tasks);
     }, _ => {
-      checkbox.checked  = false;
+      checkbox.checked = false;
       checkbox.disabled = false;
       item.style.opacity = '';
     }).completeTask(taskId);
@@ -565,7 +791,7 @@
       if (final < -_swipe.PX / 2) _revealRow(row);
       else _hideRevealedRow();
     };
-    row.addEventListener('pointerup',     finish);
+    row.addEventListener('pointerup', finish);
     row.addEventListener('pointercancel', _ => finish(null));
 
     const onSuccess = forecast => {
@@ -590,10 +816,10 @@
     const tx = _trans.items.find(t => t.row === rowIndex);
     if (!tx) return;
     _trans.editingRow = rowIndex;
-    $('tx-amount').value   = tx.amount;
-    $('tx-date').value     = tx.isoDate;
-    $('tx-label').value    = tx.label === '—' ? '' : tx.label;
-    $('tx-rule').value     = tx.rule;
+    $('tx-amount').value = tx.amount;
+    $('tx-date').value = tx.isoDate;
+    $('tx-label').value = tx.label === '—' ? '' : tx.label;
+    $('tx-rule').value = tx.rule;
     $('tx-category').value = tx.category;
     $('btn-add').innerHTML = 'Enregistrer';
     _openModal('transaction');
@@ -628,20 +854,20 @@
     let prevYear = null;
     $('forecast-list').innerHTML = allMonths.map(m => {
       const year = m.month.slice(-4);
-      const sep  = (prevYear !== null && year !== prevYear)
+      const sep = (prevYear !== null && year !== prevYear)
         ? `<li class="forecast-year-sep">${year}</li>`
         : '';
       prevYear = year;
       let cls = 'forecast-item';
-      if (m.isCurrent)             cls += ' is-current';
+      if (m.isCurrent) cls += ' is-current';
       if (m.isArchived || m.isGap) cls += ' is-archived';
-      else if (m.isForecast)       cls += ' is-forecast';
+      else if (m.isForecast) cls += ' is-forecast';
       return sep + `<li class="${cls}">
         <span class="forecast-month">${escHtml(fmtMonth(m.month))}</span>
         <span>${fmt(m.budget, true)}</span>
-        <span>${fmt(m.lep,    true)}</span>
-        <span>${fmt(m.la,     true)}</span>
-        <span>${fmt(m.csl,    true)}</span>
+        <span>${fmt(m.lep, true)}</span>
+        <span>${fmt(m.la, true)}</span>
+        <span>${fmt(m.csl, true)}</span>
       </li>`;
     }).join('');
   }
@@ -658,16 +884,16 @@
     // Tableau des niveaux + jours inline pour les paliers supérieurs au courant
     $('meteo-table').innerHTML = WEATHER.map((w, i) => {
       const fromRatio = i === 0 ? -Infinity : WEATHER[i - 1].max;
-      const toRatio   = w.max;
+      const toRatio = w.max;
       const range = fromRatio === -Infinity ? '< 0 %'
-        : toRatio   === Infinity             ? '> ' + Math.round(fromRatio * 100) + ' %'
-        : Math.round(fromRatio * 100) + ' – ' + Math.round(toRatio * 100) + ' %';
+        : toRatio === Infinity ? '> ' + Math.round(fromRatio * 100) + ' %'
+          : Math.round(fromRatio * 100) + ' – ' + Math.round(toRatio * 100) + ' %';
       const isCur = w === _meteo.weather;
 
       let daysHtml = '';
       if (showDays && i > curIdx) {
-        const L  = WEATHER[i - 1].max; // borne basse du palier
-        const d  = Math.ceil(jr - _meteo.budget / (L * rj));
+        const L = WEATHER[i - 1].max; // borne basse du palier
+        const d = Math.ceil(jr - _meteo.budget / (L * rj));
         const ok = isFinite(d) && d > 0 && d <= jr - 1;
         daysHtml = `<span class="meteo-table-days${ok ? '' : ' is-unreachable'}">${ok ? (d > 1 ? 'dans ' + d + ' j' : 'demain') : '—'}</span>`;
       }
@@ -682,7 +908,7 @@
 
     let ratioHtml = `Ratio actuel : <strong>${Math.round(_meteo.ratio * 100)} %</strong>`;
     if (rj > 0 && _meteo.ratio >= 1) {
-      const maxSpend = Math.max(0, _meteo.budget - rj * (jr-1));
+      const maxSpend = Math.max(0, _meteo.budget - rj * (jr - 1));
       const date = now.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
       ratioHtml += ` | Dépense max ${date} : <strong>${fmt(maxSpend)}</strong>`;
     }
@@ -701,8 +927,8 @@
     const list = $('month-trans-list');
     let items = _trans.items;
 
-    if (_mtFilters.rule) items = items.filter(t => t.rule     === _mtFilters.rule);
-    if (_mtFilters.cat)  items = items.filter(t => t.category === _mtFilters.cat);
+    if (_mtFilters.rule) items = items.filter(t => t.rule === _mtFilters.rule);
+    if (_mtFilters.cat) items = items.filter(t => t.category === _mtFilters.cat);
 
     // Summary
     const pos = items.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
@@ -745,13 +971,13 @@
   function _renderMtChips() {
     const chips = [];
     if (_mtFilters.rule) chips.push({ key: 'rule', label: _mtFilters.rule });
-    if (_mtFilters.cat)  chips.push({ key: 'cat',  label: _mtFilters.cat });
+    if (_mtFilters.cat) chips.push({ key: 'cat', label: _mtFilters.cat });
     _renderChips('mt-filter-chips', chips, key => { _mtFilters[key] = ''; _renderMonthTrans(); });
   }
 
   function _syncMtFilterPanel() {
     const presentRules = new Set(_trans.items.map(t => t.rule).filter(Boolean));
-    const presentCats  = new Set(_trans.items.map(t => t.category).filter(Boolean));
+    const presentCats = new Set(_trans.items.map(t => t.category).filter(Boolean));
 
     // Pills règle : désactiver celles sans transaction correspondante
     $All('#mt-rule-pills .filter-rule-pill').forEach(b => {
@@ -790,7 +1016,7 @@
 
   $('btn-mt-filter-apply').addEventListener('click', _ => {
     _mtFilters.rule = $('mt-rule-pills').querySelector('.is-active')?.dataset.rule || '';
-    _mtFilters.cat  = $('mt-filter-cat').value;
+    _mtFilters.cat = $('mt-filter-cat').value;
     $('mt-filter-panel').classList.remove('is-visible');
     _renderMonthTrans();
   });
@@ -817,9 +1043,9 @@
 
   // Hubs du menu réorganisé (sous-menus / sous-sous-menus)
   [['btn-open-taches', 'taches'], ['btn-open-outils', 'outils'], ['btn-open-comptes', 'comptes'],
-   ['btn-open-parametres', 'parametres'], ['btn-open-profil', 'profil'],
-   ['btn-open-confidentialite', 'confidentialite'],
-   ['btn-open-interface', 'interface'], ['btn-open-systeme', 'systeme']
+  ['btn-open-parametres', 'parametres'], ['btn-open-profil', 'profil'],
+  ['btn-open-confidentialite', 'confidentialite'],
+  ['btn-open-interface', 'interface'], ['btn-open-systeme', 'systeme']
   ].forEach(([btn, name]) => {
     $(btn).addEventListener('click', _ => _openModal(name));
     _bindModal(name);
@@ -996,7 +1222,7 @@
       if (_cache.balances) renderLinkedAccountCards(_cache.balances);
       if (_charges.loaded) renderPrevList();
       renderForecast();
-      if (_cache.cur)   renderBalances(_cache.cur);
+      if (_cache.cur) renderBalances(_cache.cur);
       if (_cache.rules) renderDonut(_cache.rules);
     },
   });
@@ -1025,7 +1251,7 @@
   function updateTransLimitUI() {
     $('trans-limit-value').textContent = STATE.transLimit;
     $('btn-trans-limit-minus').disabled = STATE.transLimit <= TRANS_LIMIT.MIN;
-    $('btn-trans-limit-plus').disabled  = STATE.transLimit >= TRANS_LIMIT.MAX;
+    $('btn-trans-limit-plus').disabled = STATE.transLimit >= TRANS_LIMIT.MAX;
   }
   function changeTransLimit(delta) {
     const prev = STATE.transLimit;
@@ -1041,14 +1267,14 @@
     _renderTransList('recent-trans-list', STATE.transLimit);
   }
   $('btn-trans-limit-minus').addEventListener('click', _ => changeTransLimit(-1));
-  $('btn-trans-limit-plus') .addEventListener('click', _ => changeTransLimit(+1));
+  $('btn-trans-limit-plus').addEventListener('click', _ => changeTransLimit(+1));
   updateTransLimitUI();
 
   /* ── Stepper : objectif de dépense/jour (profil) ─── */
   function updateGoalUI() {
     $('goal-value').textContent = STATE.dailyGoal + ' €';
     $('btn-goal-minus').disabled = STATE.dailyGoal <= DAILY_GOAL.MIN;
-    $('btn-goal-plus').disabled  = STATE.dailyGoal >= DAILY_GOAL.MAX;
+    $('btn-goal-plus').disabled = STATE.dailyGoal >= DAILY_GOAL.MAX;
   }
   function _rerenderGoalLine() {
     if (_cache.cur) renderGoal(_cache.cur.budget, getDayMetrics().jr);
@@ -1067,7 +1293,7 @@
     _rerenderGoalLine();
   }
   $('btn-goal-minus').addEventListener('click', _ => changeDailyGoal(-1));
-  $('btn-goal-plus') .addEventListener('click', _ => changeDailyGoal(+1));
+  $('btn-goal-plus').addEventListener('click', _ => changeDailyGoal(+1));
   updateGoalUI();
 
   /* ── Le Mammouth : contact prévenu en cas de mois difficile ─── */
@@ -1079,7 +1305,7 @@
     el.value = STATE[key] || '';
     el.addEventListener('change', _ => {
       const prev = STATE[key] || '';
-      const val  = el.value.trim();
+      const val = el.value.trim();
       if (val === prev) return;
       STATE[key] = val;
       runner('Sauvegarde ' + key, null, _ => { STATE[key] = prev; el.value = prev; })
@@ -1092,14 +1318,14 @@
     onLabel: 'Activé', offLabel: 'Désactivé',
     onChange: _updateMammothFields,
   });
-  bindMammothField('mammoth-name',    'mammothName');
-  bindMammothField('mammoth-email',   'mammothEmail');
+  bindMammothField('mammoth-name', 'mammothName');
+  bindMammothField('mammoth-email', 'mammothEmail');
   bindMammothField('mammoth-message', 'mammothMessage');
   _updateMammothFields();
 
   /* ── Pull-to-refresh : swipe down en haut de page (hors modal/splash) ── */
   let _ptrActive = false;
-  let _ptrFinish = _ => {};
+  let _ptrFinish = _ => { };
   (function initPullToRefresh() {
     const THRESHOLD = 150; // px de tirage requis pour déclencher
     const ind = document.createElement('div');
@@ -1137,7 +1363,7 @@
       const progress = Math.min(1, dy / THRESHOLD);
       const pull = Math.min(THRESHOLD * 1.4, dy * 0.5); // résistance
       ind.style.transition = 'none';
-      ind.style.opacity   = String(progress);
+      ind.style.opacity = String(progress);
       ind.style.transform = `translateY(${pull}px) scale(${0.8 + progress * 0.2})`;
       ind.style.setProperty('--draw', String(100 - progress * 100)); // dessine le logo selon dy/THRESHOLD
       ind.classList.toggle('is-armed', dy > THRESHOLD);
@@ -1197,10 +1423,10 @@
 
   $('form-transaction').addEventListener('submit', e => {
     e.preventDefault();
-    const amount   = parseFloat($('tx-amount').value);
-    const date     = $('tx-date').value;
-    const label    = $('tx-label').value.trim();
-    const rule     = $('tx-rule').value.trim();
+    const amount = parseFloat($('tx-amount').value);
+    const date = $('tx-date').value;
+    const label = $('tx-label').value.trim();
+    const rule = $('tx-rule').value.trim();
     const category = $('tx-category').value.trim();
 
     if (isNaN(amount) || !date || !label) {
@@ -1217,7 +1443,7 @@
       $('form-transaction').reset();
       $('tx-date').value = date;
       if (editing) history.back();
-      else         closeAll();
+      else closeAll();
       _trans.editingRow = null;
       applyForecast(data);
       if (_modal.stack.includes('month-trans')) _renderMonthTrans();
@@ -1241,11 +1467,11 @@
     }
     const { jr, rj } = getDayMetrics({ tomorrow: true });
     const newBudget = _meteo.budget - x;
-    const newRatio  = rj > 0 ? newBudget / (jr * rj) : -1;
-    const newW      = WEATHER.find(e => newRatio < e.max);
-    const curW      = _meteo.weather;
-    const delta     = WEATHER.indexOf(newW) - WEATHER.indexOf(curW);
-    const newMarge  = newBudget / jr;
+    const newRatio = rj > 0 ? newBudget / (jr * rj) : -1;
+    const newW = WEATHER.find(e => newRatio < e.max);
+    const curW = _meteo.weather;
+    const delta = WEATHER.indexOf(newW) - WEATHER.indexOf(curW);
+    const newMarge = newBudget / jr;
 
     let badge, cls;
     let msg = (delta < 0 ? `Tu chuteras de ${Math.abs(delta)} paliers. ` : '') + `Il te restera ${fmt(newMarge)}/j.`;
@@ -1293,7 +1519,7 @@
       `;
 
       const valInput = li.querySelector('.props-value');
-      const delBtn   = li.querySelector('.props-delete');
+      const delBtn = li.querySelector('.props-delete');
 
       // Édition valeur
       valInput.dataset.last = valInput.value;
@@ -1419,7 +1645,7 @@
 
   // ── Helpers splash Gemini (appelés depuis applyForecast) ───────
   function _splashShowInsight(message) {
-    const icon  = $('splash-gemini-icon');
+    const icon = $('splash-gemini-icon');
     const msgEl = $('splash-message');
     _geminiDone = true;
     if (msgEl) _typewrite(msgEl, message, _ => { if (icon) icon.classList.add('is-idle'); });
@@ -1436,9 +1662,9 @@
      CRUD sur les lignes Prevs + filtres mois/type/règle.            */
   function _lineActiveForAbs(line, abs) {
     const start = _parsePrevDate(line.start);
-    const end   = _parsePrevDate(line.end);
+    const end = _parsePrevDate(line.end);
     if (start !== null && abs < start) return false;
-    if (end   !== null && abs > end)   return false;
+    if (end !== null && abs > end) return false;
     if (line.months) {
       const nums = new Set(line.months.split(',').map(Number));
       if (!nums.has(abs % 12 + 1)) return false;
@@ -1450,7 +1676,7 @@
     const [month, year] = allMonths[0].month.split('/').map(Number);
     const fDate = new Date(year, month - 1, 1);
     const today = new Date();
-    const ref   = fDate > today ? fDate : today;
+    const ref = fDate > today ? fDate : today;
     return _absM(ref.getFullYear(), ref.getMonth());
   }
 
@@ -1487,7 +1713,7 @@
       tsel.innerHTML = '<option value="">—</option>';
       _charges.types.forEach(t => tsel.appendChild(new Option(t, t)));
     }
-    sel.value  = _charges.filters.month;
+    sel.value = _charges.filters.month;
     tsel.value = _charges.filters.type;
     $All('#filter-rule-pills .filter-rule-pill').forEach(b =>
       b.classList.toggle('is-active', b.dataset.rule === _charges.filters.rule));
@@ -1497,8 +1723,8 @@
 
   $('btn-filter-apply').addEventListener('click', _ => {
     _charges.filters.month = $('filter-month').value;
-    _charges.filters.type  = $('filter-type').value;
-    _charges.filters.rule  = $('filter-rule-pills').querySelector('.is-active')?.dataset.rule || '';
+    _charges.filters.type = $('filter-type').value;
+    _charges.filters.rule = $('filter-rule-pills').querySelector('.is-active')?.dataset.rule || '';
     $('charges-filter-panel').classList.remove('is-visible');
     renderPrevList();
   });
@@ -1506,7 +1732,7 @@
   $('btn-filter-reset').addEventListener('click', _ => {
     _charges.filters.month = _charges.filters.type = _charges.filters.rule = '';
     $('filter-month').value = '';
-    $('filter-type').value  = '';
+    $('filter-type').value = '';
     $All('#filter-rule-pills .filter-rule-pill').forEach(b =>
       b.classList.toggle('is-active', b.dataset.rule === ''));
     $('charges-filter-panel').classList.remove('is-visible');
@@ -1517,13 +1743,13 @@
 
   /* ── Rendu liste ── */
   function renderPrevList() {
-    const list   = $('charges-list');
+    const list = $('charges-list');
     const curAbs = _charges.filters.month ? (_parsePrevDate(_charges.filters.month) ?? _curAbs()) : _curAbs();
-    let   lines  = _charges.lines;
+    let lines = _charges.lines;
 
     if (_charges.filters.month) lines = lines.filter(l => _lineActiveForAbs(l, curAbs));
-    if (_charges.filters.type)  lines = lines.filter(l => l.type === _charges.filters.type);
-    if (_charges.filters.rule)  lines = lines.filter(l => l.rule === _charges.filters.rule);
+    if (_charges.filters.type) lines = lines.filter(l => l.type === _charges.filters.type);
+    if (_charges.filters.rule) lines = lines.filter(l => l.rule === _charges.filters.rule);
 
     const activeCount = [_charges.filters.month, _charges.filters.type, _charges.filters.rule].filter(Boolean).length;
     const badge = $('filter-count-badge');
@@ -1537,7 +1763,7 @@
     const sumPos = active.filter(l => l.amount > 0 && l.rule !== 'Epargne').reduce((s, l) => s + l.amount, 0);
     const sumNeg = active.filter(l => l.amount < 0 && l.rule !== 'Epargne').reduce((s, l) => s + l.amount, 0);
     const sumSav = active.filter(l => l.rule === 'Epargne').reduce((s, l) => s + l.amount, 0);
-    const sumEl  = $('charges-summary');
+    const sumEl = $('charges-summary');
     sumEl.classList.toggle('is-visible', active.length);
     if (active.length) {
       $('charges-sum-pos').textContent = sumPos ? fmt(sumPos) : '—';
@@ -1564,7 +1790,7 @@
     list.querySelectorAll('.prev-item').forEach(el => {
       const row = parseInt(el.dataset.row, 10);
       makeSwipeable(el, {
-        onEdit:   _ => openEditPrevLine(row),
+        onEdit: _ => openEditPrevLine(row),
         onDelete: _ => {
           if (!confirm(`Supprimer "${el.dataset.label}" ?`)) return;
           _deletePrevLine(row, el);
@@ -1576,15 +1802,15 @@
   function _renderFilterChips() {
     const chips = [];
     if (_charges.filters.month) chips.push({ key: 'month', label: _absToLabel(_parsePrevDate(_charges.filters.month) ?? 0) });
-    if (_charges.filters.type)  chips.push({ key: 'type',  label: _charges.filters.type });
-    if (_charges.filters.rule)  chips.push({ key: 'rule',  label: _charges.filters.rule });
+    if (_charges.filters.type) chips.push({ key: 'type', label: _charges.filters.type });
+    if (_charges.filters.rule) chips.push({ key: 'rule', label: _charges.filters.rule });
     _renderChips('filter-chips', chips, key => { _charges.filters[key] = ''; renderPrevList(); });
   }
 
   function _prevItemHtml(line, curAbs) {
     const active = _lineActiveForAbs(line, curAbs);
-    const color  = RULE_COLORS[line.rule] || 'var(--clr-muted)';
-    const cls    = line.amount >= 0 ? 'positive' : (line.rule == 'Epargne' ? 'epargne' : 'negative');
+    const color = RULE_COLORS[line.rule] || 'var(--clr-muted)';
+    const cls = line.amount >= 0 ? 'positive' : (line.rule == 'Epargne' ? 'epargne' : 'negative');
     const period = line.start
       ? (line.end ? `${line.start} → ${line.end}` : `dès ${line.start}`)
       : (line.end ? `jusqu'à ${line.end}` : '');
@@ -1601,9 +1827,9 @@
             </div>
             <div class="prev-meta">
               ${!active && line.rule ? `<span class="prev-tag" style="--tc:${color}">${escHtml(line.rule)}</span>` : ''}
-              ${line.type   ? `<span class="prev-tag-dim">${escHtml(line.type)}</span>` : ''}
+              ${line.type ? `<span class="prev-tag-dim">${escHtml(line.type)}</span>` : ''}
               ${line.months ? `<span class="prev-period">Mois ${escHtml(line.months)}</span>` : ''}
-              ${period      ? `<span class="prev-period">${escHtml(period)}</span>` : ''}
+              ${period ? `<span class="prev-period">${escHtml(period)}</span>` : ''}
             </div>
           </div>
         </div>
@@ -1645,7 +1871,7 @@
     _charges.editingRow = rowIndex;
     _populatePrevTypeSelect();
     $('prev-line-title').textContent = 'Modifier la charge';
-    $('pl-label').value  = line.label;
+    $('pl-label').value = line.label;
     $('pl-amount').value = Math.abs(line.amount);
     _charges.sign = line.amount >= 0 ? 1 : -1;
     _updateSignBtn();
@@ -1653,7 +1879,7 @@
     $All('#pl-rule-pills .pl-rule-pill').forEach(b => b.classList.toggle('is-active', b.dataset.rule === line.rule));
     // Start / end : convert MM/YYYY → YYYY-MM (format type="month")
     $('pl-start').value = line.start ? line.start.slice(3) + '-' + line.start.slice(0, 2) : '';
-    $('pl-end').value   = line.end   ? line.end.slice(3)   + '-' + line.end.slice(0, 2)   : '';
+    $('pl-end').value = line.end ? line.end.slice(3) + '-' + line.end.slice(0, 2) : '';
     const activeMonths = line.months ? new Set(line.months.split(',').map(Number)) : new Set();
     $All('#pl-months-pills .pl-month-pill').forEach(b =>
       b.classList.toggle('is-active', activeMonths.has(+b.dataset.month)));
@@ -1677,17 +1903,17 @@
 
     // Convertit YYYY-MM → MM/YYYY
     const toMmYyyy = v => v ? v.slice(5, 7) + '/' + v.slice(0, 4) : '';
-    const activeRule   = $('pl-rule-pills').querySelector('.is-active')?.dataset.rule || '';
+    const activeRule = $('pl-rule-pills').querySelector('.is-active')?.dataset.rule || '';
     const activeMonths = [...$All('#pl-months-pills .pl-month-pill.is-active')]
       .map(b => b.dataset.month).join(',');
 
     const data = {
-      label:  $('pl-label').value.trim(),
+      label: $('pl-label').value.trim(),
       amount: amountRaw * _charges.sign,
-      type:   $('pl-type').value,
-      rule:   activeRule,
-      start:  toMmYyyy($('pl-start').value),
-      end:    toMmYyyy($('pl-end').value),
+      type: $('pl-type').value,
+      rule: activeRule,
+      start: toMmYyyy($('pl-start').value),
+      end: toMmYyyy($('pl-end').value),
       months: activeMonths,
     };
 

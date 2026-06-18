@@ -25,11 +25,11 @@ gas/
 ├── pages/             Budget, Evaluate, Prevs
 ├── modals/            modaux plein-écran
 ├── shared/            Menu, Nav, Splash
-├── scripts/           Constantes, Helpers, Script (JS client SPA ~1800 l.)
+├── scripts/           Script (JS client SPA ~1900 l.)
 └── styles/            Styles (CSS global)
 ```
 
-Includes dans `App.html` : `include('styles/Styles')`, `includes(['pages/Budget', …])`. Tout `_modal.ALL` (Constantes) doit avoir un `id="modal-<nom>"` inclus dans `App.html`.
+Includes dans `App.html` : `include('styles/Styles')`, `includes(['pages/Budget', …])`. Tout `_modal.ALL` doit avoir un `id="modal-<nom>"` inclus dans `App.html`.
 
 ## Navigation
 
@@ -38,7 +38,7 @@ Modaux clés : `Meteo, MonthTrans, Transaction, Payday, PrevLine, Connect, Accou
 
 ## JS client (`scripts/`)
 
-### État global (`Constantes.html`)
+### État global
 `STATE` (prefs UI + `hideAmounts` éphémère), `_meteo`, `_cache` (cur/rules/props), `_trans`, `_modal` (stack+ALL), `_swipe`, `_charges`, `_toast`. Consts : `TRANS_LIMIT`, `RULE_COLORS` (Besoins/Envies/Epargne — **pas Dette** → gris), `MOIS`, `WEATHER`.
 
 ### Patterns établis
@@ -76,7 +76,7 @@ Cache localStorage `alfred_gemini_cache` `{key, message, ts}`. Clé = `"MM/YYYY|
 ## Tests
 
 - `gas-env.js` : charge `Alfred.js` (`vm.runInContext`, stubs GAS). Expose les `function`, pas les `const`.
-- `client-env.js` : charge `Constantes`+`Helpers` (pas `Script`), stubs DOM, helpers via épilogue.
+- `client-env.js` : charge `Script`, stubs DOM, helpers via épilogue.
 - `vm.runInContext` non instrumenté → `test:cov` ne couvre que les helpers, pas `Alfred.js`. Coverage manuelle/fonctionnelle.
 
 ## Règles absolues
