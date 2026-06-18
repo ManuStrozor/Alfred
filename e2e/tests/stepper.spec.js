@@ -4,8 +4,9 @@ import { openApp } from '../helpers.js';
 test('dailyGoal : appuis successifs → un seul appel setUserPref (debounce 1s)', async ({ page }) => {
   await openApp(page);
 
-  // Le stepper vit dans un modal ; on déclenche les clics via dispatchEvent sur le bouton
-  // (le listener click est attaché au démarrage, indépendamment de la visibilité du modal).
+  await page.locator('#btn-nav-menu').click();
+  await page.getByRole('button', { name: '⚙️ Paramètres Confidentialit' }).click();
+  await page.getByRole('button', { name: '👤 Profil ›' }).click();
   await page.evaluate(() => {
     const b = document.getElementById('btn-goal-plus');
     for (let i = 0; i < 5; i++) b.dispatchEvent(new Event('click'));
