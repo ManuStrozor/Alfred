@@ -12,6 +12,39 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Ensure CI workflow succeeded for this commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking CI workflow run for commit $GITHUB_SHA"
+          owner_repo="${GITHUB_REPOSITORY}"
+          owner=${owner_repo%/*}
+          repo=${owner_repo#*/}
+          # Normalize branch — if GITHUB_REF is a tag, leave branch empty
+          if [[ "${GITHUB_REF#refs/heads/}" != "${GITHUB_REF}" ]]; then
+            branch=${GITHUB_REF#refs/heads/}
+          else
+            branch=
+          fi
+
+          if [ -n "$branch" ]; then
+            runs_json=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/$owner/$repo/actions/workflows/ci.yml/runs?per_page=50&branch=$branch")
+          else
+            runs_json=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/$owner/$repo/actions/workflows/ci.yml/runs?per_page=50")
+          fi
+
+          run=$(echo "$runs_json" | jq -r --arg sha "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha==$sha) | @base64' | head -n1)
+          if [ -z "$run" ]; then
+            echo "No CI run found for commit $GITHUB_SHA; aborting."
+            exit 1
+          fi
+          conclusion=$(echo "$run" | base64 --decode | jq -r '.conclusion')
+          echo "CI conclusion: $conclusion"
+          if [ "$conclusion" != "success" ]; then
+            echo "CI did not succeed. Aborting."
+            exit 1
+          fi
+
       - name: Check if Alfred.js was modified
         id: check
         run: |
