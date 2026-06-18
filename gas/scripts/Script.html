@@ -906,11 +906,15 @@
       </li>`;
     }).join('');
 
-    let ratioHtml = `Ratio actuel : <strong>${Math.round(_meteo.ratio * 100)} %</strong>`;
+    let ratioHtml = `Auj. : <strong>${Math.round(_meteo.ratio * 100)} %</strong>`;
     if (rj > 0 && _meteo.ratio >= 1) {
       const maxSpend = Math.max(0, _meteo.budget - rj * (jr - 1));
       const date = now.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
       ratioHtml += ` | Dépense max ${date} : <strong>${fmt(maxSpend)}</strong>`;
+    } else {
+      // Ratio de demain si aucun mouvement aujourd'hui : budget inchangé, un jour de moins
+      const ratioDemain = (_meteo.budget / (jr - 1)) / rj;
+      ratioHtml += ` | Dem. : <strong>${rj > 0 && jr > 1 ? Math.round(ratioDemain * 100) : '—'} %</strong>`;
     }
     $('meteo-modal-ratio').innerHTML = ratioHtml;
 
