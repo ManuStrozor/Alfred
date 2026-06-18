@@ -39,11 +39,11 @@
   const _trans = { items: [], editingRow: null };
 
   const WEATHER = [
-    { max: 0, icon: '⛈️', label: 'Tempête', color: 'var(--clr-danger)' },
-    { max: 0.2, icon: '🌧️', label: 'Orage', color: 'var(--neon-orange)' },
-    { max: 0.5, icon: '🌦️', label: 'Pluie', color: '#ffb300' },
+    { max: 0.2, icon: '⛈️', label: 'Tempête', color: 'var(--clr-danger)' },
+    { max: 0.4, icon: '🌧️', label: 'Orage', color: 'var(--neon-orange)' },
+    { max: 0.6, icon: '🌦️', label: 'Pluie', color: '#ffb300' },
     { max: 0.8, icon: '⛅', label: 'Éclarcie', color: 'var(--neon-blue)' },
-    { max: 1.1, icon: '🌤️', label: 'Soleil', color: 'var(--neon-green)' },
+    { max: 1, icon: '🌤️', label: 'Soleil', color: 'var(--neon-green)' },
     { max: Infinity, icon: '☀️', label: 'Grand soleil', color: '#e5b13d' }
   ];
 
@@ -885,9 +885,9 @@
     $('meteo-table').innerHTML = WEATHER.map((w, i) => {
       const fromRatio = i === 0 ? -Infinity : WEATHER[i - 1].max;
       const toRatio = w.max;
-      const range = fromRatio === -Infinity ? '< 0 %'
-        : toRatio === Infinity ? '> ' + Math.round(fromRatio * 100) + ' %'
-          : Math.round(fromRatio * 100) + ' – ' + Math.round(toRatio * 100) + ' %';
+      const range = fromRatio === -Infinity ? `< ${Math.round(toRatio * 100)} %`
+        : toRatio === Infinity ? `> ${Math.round(fromRatio * 100)} %`
+          : `${Math.round(fromRatio * 100)} – ${Math.round(toRatio * 100)} %`;
       const isCur = w === _meteo.weather;
 
       let daysHtml = '';
