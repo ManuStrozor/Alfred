@@ -1283,18 +1283,29 @@
   function _rerenderGoalLine() {
     if (_cache.cur) renderGoal(_cache.cur.budget, getDayMetrics().jr);
   }
+  // Persistance debouncée : les appuis successifs ne déclenchent qu'un seul appel GAS
+  let _goalSaveTimer = null;
+  let _goalSaved = STATE.dailyGoal; // dernière valeur persistée avec succès
+  function _saveDailyGoal() {
+    const val = STATE.dailyGoal;
+    if (val === _goalSaved) return;
+    runner('Sauvegarde dailyGoal',
+      _ => { _goalSaved = val; },
+      _ => {                          // rollback vers la dernière valeur sûre
+        STATE.dailyGoal = _goalSaved;
+        updateGoalUI();
+        _rerenderGoalLine();
+      }
+    ).setUserPref('dailyGoal', val);
+  }
   function changeDailyGoal(delta) {
-    const prev = STATE.dailyGoal;
-    const next = Math.max(DAILY_GOAL.MIN, Math.min(DAILY_GOAL.MAX, prev + delta * DAILY_GOAL.STEP));
-    if (next === prev) return;
+    const next = Math.max(DAILY_GOAL.MIN, Math.min(DAILY_GOAL.MAX, STATE.dailyGoal + delta * DAILY_GOAL.STEP));
+    if (next === STATE.dailyGoal) return;
     STATE.dailyGoal = next;
-    runner('Sauvegarde dailyGoal', null, _ => {
-      STATE.dailyGoal = prev; // rollback si la persistance échoue
-      updateGoalUI();
-      _rerenderGoalLine();
-    }).setUserPref('dailyGoal', next);
     updateGoalUI();
     _rerenderGoalLine();
+    clearTimeout(_goalSaveTimer);
+    _goalSaveTimer = setTimeout(_saveDailyGoal, 1000); // 1s après le dernier appui
   }
   $('btn-goal-minus').addEventListener('click', _ => changeDailyGoal(-1));
   $('btn-goal-plus').addEventListener('click', _ => changeDailyGoal(+1));
