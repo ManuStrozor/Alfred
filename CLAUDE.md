@@ -11,7 +11,7 @@ Toujours « Alfred » dans le code/messages. Répondre en **français**.
 | Backend | `gas/Alfred.js` — GAS Web App (`executeAs: USER_ACCESSING`, `access: ANYONE`) |
 | Frontend | `gas/**/*.html` — HtmlService SPA en iframe sandbox |
 | Tests | Jest `__tests__/` — backend (`gas-env.js`) + client (`client-env.js`), via `vm.runInContext` |
-| CI/Deploy | `clasp` + GitHub Actions (`ci.yml`, `deploy*.yml`), creds secret `CLASPRC_JSON` |
+| CI/Deploy | `clasp` + GitHub Actions (`test.yml` réutilisable + `deploy.yml`), e2e Playwright, secret `CLASPRC_JSON` |
 
 ## Structure (`gas/` = rootDir clasp)
 
@@ -85,7 +85,8 @@ Cache localStorage `alfred_gemini_cache` `{key, message, ts}`. Clé = `"MM/YYYY|
 - Modifier une valeur littérale (couleur, montant, label, URL, taux) — montrer avant/après et demander validation avant de toucher.
 
 ### Tests
-- `npm test` **uniquement si `gas/Alfred.js` est modifié** (CI le détecte via `grep '^gas/Alfred\.js$'`).
+- `npm test` **uniquement si `gas/Alfred.js` est modifié** (CI le détecte via `dorny/paths-filter`, job `changes` de `test.yml`).
+- Tout changement à un `.html` (`gas/**/*.html`) **doit** être couvert par un test e2e Playwright (`e2e/tests/*.spec.js`) — proposer/étendre le spec dans la même série que la modif.
 
 ### Commits
 - Toujours proposer un message de commit court à la fin de chaque modif ou série.
