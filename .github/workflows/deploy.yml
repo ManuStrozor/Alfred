@@ -9,10 +9,13 @@ on:
     branches: [dev]
     paths:
       - 'gas/**'
+      - '.github/workflows/*.yml'
 
 jobs:
   test:
     uses: ./.github/workflows/test.yml
+    with:
+      run_all: ${{ github.event_name == 'release' }}
 
   deploy:
     needs: test

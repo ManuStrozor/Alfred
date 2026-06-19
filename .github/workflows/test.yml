@@ -2,15 +2,23 @@ name: Tests
 
 on:
   workflow_call:
+    inputs:
+      run_all:
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      run_all:
+        type: boolean
+        default: true
 
 jobs:
   # Détecte une seule fois les fichiers modifiés ; les autres jobs s'y réfèrent
   changes:
     runs-on: ubuntu-latest
     outputs:
-      alfred: ${{ steps.f.outputs.alfred }}
-      html:   ${{ steps.f.outputs.html }}
+      server: ${{ steps.f.outputs.server }}
+      client: ${{ steps.f.outputs.client }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -20,18 +28,19 @@ jobs:
         with:
           base: ${{ github.ref_name }}
           filters: |
-            alfred:
+            server:
               - 'gas/Alfred.js'
               - '.github/workflows/test.yml'
               - '.github/actions/setup/**'
-            html:
+            client:
+              - 'e2e/tests/*.spec.js'
               - '**/*.html'
               - '.github/workflows/test.yml'
               - '.github/actions/setup/**'
 
   test:
     needs: changes
-    if: needs.changes.outputs.alfred == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.changes.outputs.server == 'true' || inputs.run_all
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -41,7 +50,7 @@ jobs:
 
   build-test:
     needs: [changes, test]
-    if: needs.changes.outputs.alfred == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.changes.outputs.server == 'true' || inputs.run_all
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -51,7 +60,7 @@ jobs:
 
   playwright-test:
     needs: changes
-    if: needs.changes.outputs.html == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.changes.outputs.client == 'true' || inputs.run_all
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
