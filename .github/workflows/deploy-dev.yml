@@ -1,13 +1,14 @@
 name: Deploy to Google Apps Script (dev)
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types:
-      - completed
+  push:
+    branches: [dev]
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
