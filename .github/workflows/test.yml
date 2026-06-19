@@ -13,16 +13,19 @@ jobs:
       html:   ${{ steps.f.outputs.html }}
     steps:
       - uses: actions/checkout@v5
-      - uses: dorny/paths-filter@v3
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v4
         id: f
         with:
+          base: ${{ github.ref_name }}
           filters: |
             alfred: ['gas/Alfred.js']
             html:   ['**/*.html']
 
   test:
     needs: changes
-    if: needs.changes.outputs.alfred == 'true'
+    if: needs.changes.outputs.alfred == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -32,7 +35,7 @@ jobs:
 
   build-test:
     needs: [changes, test]
-    if: needs.changes.outputs.alfred == 'true'
+    if: needs.changes.outputs.alfred == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -42,7 +45,7 @@ jobs:
 
   playwright-test:
     needs: changes
-    if: needs.changes.outputs.html == 'true'
+    if: needs.changes.outputs.html == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
