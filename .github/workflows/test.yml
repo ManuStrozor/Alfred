@@ -36,13 +36,9 @@ jobs:
             server:
               - '__tests__/*.test.js'
               - 'gas/Alfred.js'
-              - '.github/workflows/test.yml'
-              - '.github/actions/setup/**'
             client:
               - 'e2e/tests/*.spec.js'
               - 'gas/**/*.html'
-              - '.github/workflows/test.yml'
-              - '.github/actions/setup/**'
 
   test:
     needs: changes

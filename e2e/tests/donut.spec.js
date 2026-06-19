@@ -27,6 +27,7 @@ test('légende : le donut réagit correctement au clique sur la légende', async
     await legend.click();
     await expect.poll(_ => page.locator('#donut-legend .is-active').count()).toBe(1);
     await expect(legend).toHaveClass(/is-active/);
+    await expect(page.locator('#donut-center-lbl')).toContainText(rule);
     await expect.poll(async _ =>
       circles.evaluateAll(items =>
         items.filter(el => getComputedStyle(el).opacity === "0.18").length
