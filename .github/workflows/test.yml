@@ -12,6 +12,7 @@ jobs:
       alfred: ${{ steps.f.outputs.alfred }}
       html:   ${{ steps.f.outputs.html }}
     steps:
+      - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
         id: f
         with:
