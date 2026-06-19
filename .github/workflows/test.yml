@@ -1,6 +1,11 @@
 name: Tests
 
 on:
+  push:
+    branches: [dev]
+    paths:
+      - '__tests__/**'
+      - 'e2e/**'
   workflow_call:
     inputs:
       run_all:
@@ -29,12 +34,13 @@ jobs:
           base: ${{ github.ref_name }}
           filters: |
             server:
+              - '__tests__/*.test.js'
               - 'gas/Alfred.js'
               - '.github/workflows/test.yml'
               - '.github/actions/setup/**'
             client:
               - 'e2e/tests/*.spec.js'
-              - '**/*.html'
+              - 'gas/**/*.html'
               - '.github/workflows/test.yml'
               - '.github/actions/setup/**'
 

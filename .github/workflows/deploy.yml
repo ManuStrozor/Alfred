@@ -9,7 +9,6 @@ on:
     branches: [dev]
     paths:
       - 'gas/**'
-      - '.github/workflows/*.yml'
 
 jobs:
   test:
