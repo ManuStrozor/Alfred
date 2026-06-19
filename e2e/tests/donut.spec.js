@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../coverage.js';
 import { openApp } from '../helpers.js';
 
 test.beforeEach(async ({ page }) => { await openApp(page); });

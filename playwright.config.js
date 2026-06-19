@@ -4,6 +4,7 @@ const PORT = Number(process.env.E2E_PORT) || 4317;
 
 export default defineConfig({
   testDir: './e2e/tests',
+  globalTeardown: './e2e/coverage-report.mjs',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,

@@ -12,6 +12,7 @@ const OUT  = resolve(ROOT, 'dist', 'test');
 
 const read = (p) => readFileSync(p, 'utf8');
 const included = [];
+let clientJs = ''; // JS client extrait → servi comme fichier séparé (coverage mappée)
 
 /** Lit gas/<name>.html — échoue bruyamment si absent (assure la complétude des includes). */
 function fragment(name) {
@@ -37,10 +38,14 @@ function resolveIncludes(html) {
     const names = [...list.matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1]);
     return names.map(fragment).join('\n');
   });
-  // include('x') — le script client principal est précédé du mock GAS
-  html = html.replace(/<\?!=\s*include\(\s*['"]([^'"]+)['"]\s*\)\s*\?>/g, (_m, name) =>
-    name === 'scripts/Script' ? mockBlock() + '\n' + fragment(name) : fragment(name)
-  );
+  // include('x') — le client est extrait dans script.js (coverage), précédé du mock GAS
+  html = html.replace(/<\?!=\s*include\(\s*['"]([^'"]+)['"]\s*\)\s*\?>/g, (_m, name) => {
+    if (name === 'scripts/Script') {
+      clientJs = fragment(name).replace(/<\/?script[^>]*>/gi, '');
+      return mockBlock() + '\n<script src="script.js"></script>';
+    }
+    return fragment(name);
+  });
   return html;
 }
 
@@ -58,6 +63,7 @@ function build() {
 
   mkdirSync(OUT, { recursive: true });
   writeFileSync(resolve(OUT, 'index.html'), html, 'utf8');
+  writeFileSync(resolve(OUT, 'script.js'), clientJs, 'utf8');
 
   console.log(`[build-harness] ${included.length} fragments inclus :`);
   included.forEach((n) => console.log('  ✓ ' + n));

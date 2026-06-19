@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../coverage.js';
 import { openApp } from '../helpers.js';
 
 test('dailyGoal : debounce 1s → un seul appel après rafale de clics', async ({ page }) => {

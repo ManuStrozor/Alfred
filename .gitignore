@@ -5,3 +5,5 @@ coverage/
 dist/
 test-results/
 playwright-report/
+coverage-e2e/
+.coverage-raw/

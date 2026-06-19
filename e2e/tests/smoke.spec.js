@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../coverage.js';
 import { openApp } from '../helpers.js';
 
 test('boot : le splash est visible puis se masque au clic', async ({ page }) => {
