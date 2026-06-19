@@ -20,8 +20,14 @@ jobs:
         with:
           base: ${{ github.ref_name }}
           filters: |
-            alfred: ['gas/Alfred.js']
-            html:   ['**/*.html']
+            alfred:
+              - 'gas/Alfred.js'
+              - '.github/workflows/test.yml'
+              - '.github/actions/setup/**'
+            html:
+              - '**/*.html'
+              - '.github/workflows/test.yml'
+              - '.github/actions/setup/**'
 
   test:
     needs: changes
