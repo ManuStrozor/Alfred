@@ -1,8 +1,14 @@
-name: Deploy to Google Apps Script
+name: Deploy to GAS
+
+run-name: Deploy to GAS (${{ github.ref_name }})
 
 on:
   release:
     types: [published]
+  push:
+    branches: [dev]
+    paths:
+      - 'gas/**'
 
 jobs:
   test:
@@ -10,18 +16,16 @@ jobs:
 
   deploy:
     needs: test
+    # Déploie si les tests réussissent OU sont ignorés ; jamais s'ils échouent
+    if: ${{ always() && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - name: Install clasp
         run: npm install -g @google/clasp
-
       - name: Write clasp credentials
         run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
-
       - name: Push to Google Apps Script
         run: clasp push --force
-
       - name: Deploy new version
-        run: clasp deploy --deploymentId "${{ vars.DEPLOY_ID }}" --description "${{ github.event.release.tag_name }}"
+        run: clasp deploy --deploymentId "${{ vars.DEPLOY_ID }}" --description "${{ github.ref_name }}"

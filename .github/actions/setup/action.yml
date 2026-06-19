@@ -1,0 +1,11 @@
+name: Setup Node
+description: Configure Node.js (avec cache npm) et installe les dépendances via npm ci.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 24
+        cache: npm
+    - run: npm ci
+      shell: bash
