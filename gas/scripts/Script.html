@@ -715,6 +715,7 @@
 
   function _bindModal(name) {
     $(name + '-back').addEventListener('click', _ => history.back());
+    $(name + '-exit')?.addEventListener('click', closeAll);
   }
 
   // Bouton Back Android / history.back() / history.go(-N) → popstate
