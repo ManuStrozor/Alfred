@@ -34,7 +34,5 @@
   "savingsProps": { "lep": 8000, "la": 20000, "csl": 0 },
   "shownAccounts": [],
   "tasks": [],
-  "prevs": { "lines": [], "types": ["Loyer", "Abonnement", "Salaire"] },
-  "mainAccountName": "Compte courant",
-  "linkedAccountsCount": 0
+  "prevs": { "lines": [], "types": ["Loyer", "Abonnement", "Salaire"] }
 }

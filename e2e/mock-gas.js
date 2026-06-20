@@ -12,7 +12,6 @@
       get: function (_t, prop) {
         if (prop === 'withSuccessHandler') return function (fn) { onSuccess = fn; return api; };
         if (prop === 'withFailureHandler') return function (fn) { onFailure = fn; return api; };
-        if (prop === 'withUserObject')     return function () { return api; };
         // endpoint GAS (getAllData, setUserPref, …)
         return function () {
           var name = String(prop);
