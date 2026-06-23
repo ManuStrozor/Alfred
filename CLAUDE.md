@@ -77,7 +77,7 @@ Cache localStorage `alfred_gemini_cache` `{key, message, ts}`. Clé = `"MM/YYYY|
 ## Tests
 
 - `gas-env.js` : charge `Alfred.js` (`vm.runInContext`, stubs GAS). Expose les `function`, pas les `const`.
-- `client-env.js` : charge `js/App`, stubs DOM, helpers via épilogue.
+- `client-env.js` : charge `js/MainScript`, stubs DOM, helpers via épilogue.
 - `vm.runInContext` non instrumenté → `test:cov` ne couvre que les helpers, pas `Alfred.js`. Coverage manuelle/fonctionnelle.
 
 ## Règles absolues

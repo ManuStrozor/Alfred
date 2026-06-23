@@ -40,7 +40,7 @@ function resolveIncludes(html) {
   });
   // include('x') — le client est extrait dans script.js (coverage), précédé du mock GAS
   html = html.replace(/<\?!=\s*include\(\s*['"]([^'"]+)['"]\s*\)\s*\?>/g, (_m, name) => {
-    if (name === 'js/App') {
+    if (name === 'js/MainScript') {
       clientJs = fragment(name).replace(/<\/?script[^>]*>/gi, '');
       return mockBlock() + '\n<script src="script.js"></script>';
     }
