@@ -5,20 +5,7 @@
     <?!= include('items/modal-header', { name: 'interface', title: 'Apparence · Interface' }) ?>
 
     <ul class="action-list">
-      <li>
-        <div class="action-item action-item--static">
-          <span class="action-item-icon">🔢</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Aperçu transactions</div>
-            <div class="action-item-desc">Nombre affiché sur la page Budget</div>
-          </div>
-          <div class="stepper">
-            <button id="btn-trans-limit-minus" class="stepper-btn" aria-label="−">−</button>
-            <span id="trans-limit-value" class="stepper-value">5</span>
-            <button id="btn-trans-limit-plus" class="stepper-btn" aria-label="+">+</button>
-          </div>
-        </div>
-      </li>
+      <?!= include('items/menu-stepper', { name: 'trans-limit', icon: '🔢', label: 'Aperçu transactions', desc: 'Nombre affiché sur la page Budget', value: '5' }) ?>
       <?!= include('items/menu-toggle', { name: 'nav-labels', icon: '🏷️', label: 'Masquer les libellés nav', defaultLabel: 'Affichés' }) ?>
       <?!= include('items/menu-toggle', { name: 'splash', icon: '🌅', label: 'Désactiver le Splash', defaultLabel: 'Activé' }) ?>
     </ul>

@@ -5,22 +5,7 @@
     <?!= include('items/modal-header', { name: 'profil', title: 'Paramètres · Profil' }) ?>
 
     <ul class="action-list">
-      <li>
-        <div class="action-item action-item--static">
-          <span class="action-item-icon">🎯</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Objectif de dépense / jour</div>
-            <div class="action-item-desc">0 € = désactivé</div>
-          </div>
-          <div class="stepper">
-            <button id="btn-goal-minus" class="stepper-btn" aria-label="−">−</button>
-            <span id="goal-value" class="stepper-value">0 €</span>
-            <button id="btn-goal-plus" class="stepper-btn" aria-label="+">+</button>
-          </div>
-        </div>
-      </li>
-
-      <!-- Le Mammouth : prévenir un proche en cas de mois difficile -->
+      <?!= include('items/menu-stepper', { name: 'goal', icon: '🎯', label: 'Objectif de dépense / jour', desc: '0 € = désactivé', value: '0 €' }) ?>
       <?!= include('items/menu-toggle', { name: 'mammoth', icon: '🦣', label: 'Le Mammouth', defaultLabel: 'Désactivé' }) ?>
     </ul>
 

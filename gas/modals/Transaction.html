@@ -2,12 +2,7 @@
 <div id="modal-transaction" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet modal-sheet--large">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="transaction-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title">Ajouter une transaction</span>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'transaction', title: 'Ajouter une transaction' }) ?>
 
     <form id="form-transaction">
       <div class="form-group">

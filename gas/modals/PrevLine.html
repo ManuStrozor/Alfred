@@ -2,12 +2,7 @@
 <div id="modal-prev-line" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="prev-line-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title" id="prev-line-title">Ajouter une charge</span>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'prev-line', title: 'Ajouter une charge' }) ?>
 
     <form id="form-prev-line" autocomplete="off">
 

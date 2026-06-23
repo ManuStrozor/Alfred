@@ -2,12 +2,7 @@
 <div id="modal-meteo" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="meteo-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title">Météo budgétaire</span>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'meteo', title: 'Météo budgétaire' }) ?>
 
     <p class="meteo-modal-subtitle">Ratio = rythme actuel / rythme de départ</p>
     <ul class="meteo-table" id="meteo-table"></ul>

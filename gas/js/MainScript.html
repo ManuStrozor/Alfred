@@ -810,6 +810,7 @@
     const tx = _trans.items.find(t => t.row === rowIndex);
     if (!tx) return;
     _trans.editingRow = rowIndex;
+    $('transaction-title').textContent = 'Modifier la transaction';
     $('tx-amount').value = tx.amount;
     $('tx-date').value = tx.isoDate;
     $('tx-label').value = tx.label === '—' ? '' : tx.label;
@@ -1423,6 +1424,7 @@
 
   $('btn-add-trans').addEventListener('click', _ => {
     _trans.editingRow = null;
+    $('transaction-title').textContent = 'Ajouter une transaction';
     $('form-transaction').reset();
     $('tx-date').value = new Date().toISOString().slice(0, 10);
     $('btn-add').innerHTML = 'Ajouter';
