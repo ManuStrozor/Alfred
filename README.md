@@ -311,9 +311,14 @@ La version est affichée dans `gas/modals/Menu.html` (`<p class="app-version">`)
 
 ---
 
-## Conditions d'utilisation
+## Confidentialité & conditions d'utilisation
 
-Les conditions générales d'utilisation sont rédigées dans `CONDS.html` (page autonome).
+Deux pages externes (Google Sites), accessibles depuis **Paramètres → Confidentialité** :
+
+- **Politique de confidentialité (RGPD)** — <https://sites.google.com/view/alfred-rgpd>
+- **Conditions d'utilisation (CGU)** — <https://sites.google.com/view/alfred-conds>
+
+Les données d'un utilisateur ne sont jamais partagées avec les autres ; le masquage des montants (`••••• €`) reste purement local et éphémère.
 
 ---
 
