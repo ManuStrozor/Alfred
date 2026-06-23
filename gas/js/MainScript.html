@@ -1858,7 +1858,8 @@
   function _populatePrevTypeSelect() {
     const sel = $('pl-type');
     if (!sel) return;
-    while (sel.options.length > 1) sel.remove(1);
+    while (sel.options.length > 0) sel.remove(0);
+    sel.appendChild(new Option('', '— aucun —'));
     _charges.types.forEach(t => sel.appendChild(new Option(t, t)));
   }
 

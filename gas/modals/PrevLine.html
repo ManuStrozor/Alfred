@@ -19,12 +19,7 @@
       </div>
 
       <!-- Type -->
-      <div class="form-group">
-        <label for="pl-type">Type (compte / catégorie)</label>
-        <select id="pl-type" class="form-input">
-          <option value="">— aucun —</option>
-        </select>
-      </div>
+      <?!= include('items/form-select', { id: 'pl-type', label: 'Type', hint: 'compte / catégorie' }) ?>
 
       <!-- Règle -->
       <div class="form-group">
@@ -41,7 +36,7 @@
       <!-- Période -->
       <div class="form-row">
         <?!= include('items/form-field', { id: 'pl-start', label: 'Début', type: 'month' }) ?>
-        <?!= include('items/form-field', { id: 'pl-end', label: 'Fin', hint: '(optionnel)', type: 'month' }) ?>
+        <?!= include('items/form-field', { id: 'pl-end', label: 'Fin', hint: 'optionnel', type: 'month' }) ?>
       </div>
 
       <!-- Mois de récurrence -->

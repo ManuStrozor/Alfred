@@ -1,5 +1,5 @@
 <div class="form-group">
-    <label for="<?= id ?>"><?= label ?> <span class="label-hint"><?= (typeof hint !== 'undefined' && hint) ? hint : '' ?></span></label>
+    <label for="<?= id ?>"><?= label ?> <span class="label-hint"><?= (typeof hint !== 'undefined' && hint) ? `(${hint})` : '' ?></span></label>
     <input
         id="<?= id ?>"
         type="<?= type ?>"
@@ -9,6 +9,5 @@
         <?!= (typeof step !== 'undefined' && step) ? `step="${step}"` : '' ?>
         <?!= (typeof min !== 'undefined' && min) ? `min="${min}"` : '' ?>
         <?!= (typeof maxlength !== 'undefined' && maxlength) ? `maxlength="${maxlength}"` : '' ?>
-        <?= (typeof required !== 'undefined' && required) ? 'required' : '' ?>
-    />
+        <?= (typeof required !== 'undefined' && required) ? 'required' : '' ?>>
 </div>

@@ -5,11 +5,11 @@
     <?!= include('items/modal-header', { name: 'transaction', title: 'Ajouter une transaction' }) ?>
 
     <form id="form-transaction">
-      <?!= include('items/form-field', { id: 'tx-amount', label: 'Montant (€)', type: 'number', step: '0.01', required: true }) ?>
+      <?!= include('items/form-field', { id: 'tx-amount', label: 'Montant', hint: '€', type: 'number', step: '0.01', required: true }) ?>
       <?!= include('items/form-field', { id: 'tx-date', label: 'Date', type: 'date', required: true }) ?>
       <?!= include('items/form-field', { id: 'tx-label', label: 'Libellé', type: 'text', placeholder: 'Ikea, Leclerc, Retrait…', maxlength: '80', required: true }) ?>
-      <?!= include('items/form-select', { id: 'tx-rule', label: 'Règle', hint: '(facultatif)' }) ?>
-      <?!= include('items/form-select', { id: 'tx-category', label: 'Catégorie', hint: '(facultatif)' }) ?>
+      <?!= include('items/form-select', { id: 'tx-rule', label: 'Règle', hint: 'facultatif' }) ?>
+      <?!= include('items/form-select', { id: 'tx-category', label: 'Catégorie', hint: 'facultatif' }) ?>
       <button type="submit" id="btn-add" class="btn btn-primary">Ajouter</button>
     </form>
 
