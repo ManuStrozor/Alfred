@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * Charge le JS client (gas/scripts/Script.html) dans un contexte vm isolé avec des
+ * Charge le JS client (gas/js/App.html) dans un contexte vm isolé avec des
  * stubs DOM/window/localStorage/google.script.run minimaux — même approche que gas-env.js.
  *
- * Le top-level de Script.html s'exécute (IIFE, listeners, init) : les stubs doivent
+ * Le top-level de js/App.html s'exécute (IIFE, listeners, init) : les stubs doivent
  * couvrir ce qu'il touche au chargement (google.script.run chaînable, DOM…).
  *
  * Limitation (comme gas-env) : les `function` déclarées sont exposées sur le contexte ;
@@ -71,7 +71,7 @@ function loadClient({ prefs = {}, tab = null } = {}) {
     console:      { log() {}, warn() {}, error() {} },
   };
 
-  const code = strip('gas/scripts/Script.html')
+  const code = strip('gas/js/App.html')
              + '\n; this.__STATE = STATE; this.__MOIS = MOIS; this.__WEATHER = WEATHER; this.__RULE_COLORS = RULE_COLORS;';
 
   vm.createContext(ctx);

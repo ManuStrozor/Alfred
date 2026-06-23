@@ -1,0 +1,48 @@
+<script>
+    google.script.run
+        .withSuccessHandler(info => {
+            const setupEmail = info.email || 'Utilisateur inconnu';
+            document.getElementById('setup-email').textContent = '👤 ' + setupEmail;
+            document.getElementById('hint-email').textContent = setupEmail;
+            document.getElementById('setup-btn').disabled = false;
+        })
+        .getSetupInfo();
+
+    function doSetup() {
+        const btn = document.getElementById('setup-btn');
+        const msg = document.getElementById('setup-msg');
+        const prev = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = 'Installation…';
+        msg.style.display = 'none';
+
+        const restore = _ => { btn.disabled = false; btn.innerHTML = prev; };
+
+        google.script.run
+            .withSuccessHandler(result => {
+                restore();
+                if (result.success) {
+                    showMsg('✅ Classeur « ' + result.title + ' » créé.', true);
+                    const a = document.createElement('a');
+                    a.href = result.url;
+                    a.target = '_top';
+                    a.className = 'setup-open';
+                    a.textContent = 'Ouvrir Alfred →';
+                    btn.replaceWith(a);
+                } else {
+                    showMsg('❌ ' + result.error, false);
+                }
+            })
+            .withFailureHandler(err => {
+                restore();
+                showMsg('❌ Erreur : ' + (err.message || 'inconnue'), false);
+            })
+            .createSheetFromTemplate();
+    }
+
+    function showMsg(text, ok) {
+        const msg = document.getElementById('setup-msg');
+        msg.textContent = text;
+        msg.className = 'setup-msg ' + (ok ? 'ok' : 'err');
+        msg.style.display = 'block';
+    }
+</script>

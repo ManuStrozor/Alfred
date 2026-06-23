@@ -129,12 +129,13 @@ gas/
 ├── App.html           ← template principal (doGet → 'App')
 ├── Setup.html         ← page first-time (si aucun classeur configuré)
 ├── pages/             ← Budget · Evaluate (Estimer) · Prevs (Prévisionnel)
-├── modals/            ← Meteo, MonthTrans, Transaction, Payday, PrevLine, Connect,
-│                         Accounts, Props, Charges, Taches, Outils, Comptes,
+├── modals/            ← Menu, Meteo, MonthTrans, Transaction, Payday, PrevLine,
+│                         Connect, Accounts, Props, Charges, Taches, Outils, Comptes,
 │                         Parametres, Profil, Confidentialite, Appearance, Interface, Systeme
-├── shared/            ← Menu · Nav · Splash
-├── scripts/           ← Constantes.html · Helpers.html · Script.html (JS client SPA)
-└── styles/            ← Styles.html (CSS global, thème clair/sombre)
+├── js/                ← *.html (JS client SPA)
+├── css/               ← *.html (CSS global, thème clair/sombre)
+├── svg/               ← *.html (SVGs)
+└── img/               ← *.html (base64 images)
 ```
 
 ### Navigation

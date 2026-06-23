@@ -650,6 +650,7 @@ function doGet(e) {
     return HtmlService.createTemplateFromFile('Setup')
       .evaluate()
       .setTitle(APP + ' — Installation')
+      .setFaviconUrl('https://drive.google.com/uc?id=1ZsdnRrrR4kexfyypNExnhVHTmiMiqJCV&.png')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, interactive-widget=resizes-content');
   }
 

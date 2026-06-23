@@ -24,19 +24,20 @@ gas/
 ├── Setup.html         page first-time (si pas de classeur configuré)
 ├── pages/             Budget, Evaluate, Prevs
 ├── modals/            modaux plein-écran
-├── shared/            Menu, Nav, Splash
-├── scripts/           Script (JS client SPA ~1900 l.)
-└── styles/            Styles (CSS global)
+├── js/                *.html (JS client SPA ~1900 l.)
+├── css/               *.html (CSS global)
+├── svg/               *.html (SVGs)
+└── img/               *.html (base64 images)
 ```
 
-Includes dans `App.html` : `include('styles/Styles')`, `includes(['pages/Budget', …])`. Tout `_modal.ALL` doit avoir un `id="modal-<nom>"` inclus dans `App.html`.
+Includes dans `App.html` : `include('css/App')`, `includes(['pages/Budget', …])`. Tout `_modal.ALL` doit avoir un `id="modal-<nom>"` inclus dans `App.html`.
 
 ## Navigation
 
 Nav bottom = **Budget · Estimer · Prévisionnel** + hamburger (pastille `nav-badge` si tâches). Menu hiérarchique (modaux imbriqués) : Tâches · Outils (Passer en paie) · Comptes (Connecter EB, Accounts) · Paramètres (Confidentialité, Apparence, Système).
 Modaux clés : `Meteo, MonthTrans, Transaction, Payday, PrevLine, Connect, Accounts, Props`.
 
-## JS client (`scripts/`)
+## JS client (`js/`)
 
 ### État global
 `STATE` (prefs UI + `hideAmounts` éphémère), `_meteo`, `_cache` (cur/rules/props), `_trans`, `_modal` (stack+ALL), `_swipe`, `_charges`, `_toast`. Consts : `TRANS_LIMIT`, `RULE_COLORS` (Besoins/Envies/Epargne — **pas Dette** → gris), `MOIS`, `WEATHER`.
@@ -76,7 +77,7 @@ Cache localStorage `alfred_gemini_cache` `{key, message, ts}`. Clé = `"MM/YYYY|
 ## Tests
 
 - `gas-env.js` : charge `Alfred.js` (`vm.runInContext`, stubs GAS). Expose les `function`, pas les `const`.
-- `client-env.js` : charge `Script`, stubs DOM, helpers via épilogue.
+- `client-env.js` : charge `js/App`, stubs DOM, helpers via épilogue.
 - `vm.runInContext` non instrumenté → `test:cov` ne couvre que les helpers, pas `Alfred.js`. Coverage manuelle/fonctionnelle.
 
 ## Règles absolues
@@ -96,6 +97,6 @@ Cache localStorage `alfred_gemini_cache` `{key, message, ts}`. Clé = `"MM/YYYY|
 - Emmanuel fait souvent ses propres ajustements visuels/UX/refactors après génération — relire les fichiers avant d'éditer.
 - Il teste en live sur le déploiement GAS → **pour un bug runtime, lui demander l'erreur console avant de fouiller le code.**
 
-## Patterns CSS (`styles/Styles.html`)
+## Patterns CSS (`css/App.html`)
 
 Variables `--surface-rgb` (pivot light/dark via `data-theme`), `--clr-*`, `--neon-*`, `--font-mono`. Thème `documentElement[data-theme]`. Desktop `@media (min-width:640px)` → `max-width: clamp(480px,60vw,560px)` centré. Visibilité `.is-visible` ; nav labels via `body.no-nav-labels`. Utilitaires `.icon-circle`, pills, `logoSpinner`/`.logo-spin`.

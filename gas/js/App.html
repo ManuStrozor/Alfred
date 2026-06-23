@@ -92,20 +92,6 @@
     sign: -1
   };
 
-  const _SPIN_MARK = "M 42 68 \
-    C 48 55 51 44 60 35 \
-    C 68 43 71 52 73 60 \
-    C 69 83 36 67 30 95";
-  const _SPIN_SHIELD = "M 23 84 \
-    C 17 69 10 48 14 27 \
-    C 28 23 48 20 60 10 \
-    C 73 20 90 23 107 27 \
-    C 109 48 105 74 91 94 \
-    L 79 71 \
-    L 91 94 \
-    C 81 108 72 112 60 118 \
-    C 50 114 44 109 38 104";
-
   /* ══ Utilitaires ═════════════════════════════════════════════════════════ */
 
   function fmt(v, compact = false) {
@@ -202,11 +188,18 @@
   }
 
   function logoSpinner(size = 20) {
+    const mark = "M 42 68 C 48 55 51 44 60 35 \
+    C 68 43 71 52 73 60 C 69 83 36 67 30 95";
+    const shield = "M 23 84 C 17 69 10 48 14 27 \
+    C 28 23 48 20 60 10 C 73 20 90 23 107 27 \
+    C 109 48 105 74 91 94 L 79 71 L 91 94 \
+    C 81 108 72 112 60 118 C 50 114 44 109 38 104";
     return `
-    <svg class="logo-spin" viewBox="0 0 120 128" width="${size}" height="${size}" aria-hidden="true">
-        <path class="track" d="${_SPIN_MARK}"/><path class="track" d="${_SPIN_SHIELD}"/>
-        <path class="run" pathLength="100" d="${_SPIN_MARK}"/>
-        <path class="run" pathLength="100" d="${_SPIN_SHIELD}"/>
+    <svg class="logo-spin" viewBox="0 0 120 128"
+      width="${size}" height="${size}" aria-hidden="true">
+      <path class="track" d="${mark}"/><path class="track" d="${shield}"/>
+      <path class="run" pathLength="100" d="${mark}"/>
+      <path class="run" pathLength="100" d="${shield}"/>
     </svg>
     `;
   }
