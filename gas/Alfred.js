@@ -717,8 +717,10 @@ function getSetupInfo() {
  * @param {string} filename
  * @returns {string}
  */
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+function include(filename, params = {}) {
+  const template = HtmlService.createTemplateFromFile(filename);
+  Object.assign(template, params);
+  return template.evaluate().getContent();
 }
 
 function includes(filenames) {
