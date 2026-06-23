@@ -7,10 +7,7 @@
     <form id="form-prev-line" autocomplete="off">
 
       <!-- Libellé -->
-      <div class="form-group">
-        <label for="pl-label">Libellé</label>
-        <input id="pl-label" type="text" class="form-input" placeholder="Netflix, Loyer, Salaire…">
-      </div>
+      <?!= include('items/form-field', { id: 'pl-label', label: 'Libellé', type: 'text', placeholder: 'Netflix, Loyer, Salaire…' }) ?>
 
       <!-- Montant + signe -->
       <div class="form-group">
@@ -43,14 +40,8 @@
 
       <!-- Période -->
       <div class="form-row">
-        <div class="form-group">
-          <label for="pl-start">Début</label>
-          <input id="pl-start" type="month" class="form-input">
-        </div>
-        <div class="form-group">
-          <label for="pl-end">Fin <span class="label-hint">(optionnel)</span></label>
-          <input id="pl-end" type="month" class="form-input">
-        </div>
+        <?!= include('items/form-field', { id: 'pl-start', label: 'Début', type: 'month' }) ?>
+        <?!= include('items/form-field', { id: 'pl-end', label: 'Fin', hint: '(optionnel)', type: 'month' }) ?>
       </div>
 
       <!-- Mois de récurrence -->

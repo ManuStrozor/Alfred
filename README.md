@@ -133,7 +133,7 @@ gas/
 │                         Connect, Accounts, Props, Charges, Taches, Outils, Comptes,
 │                         Parametres, Profil, Confidentialite, Appearance, Interface, Systeme
 ├── items/             ← partials paramétrés : modal-header, menu-button, menu-link,
-│                         menu-toggle, menu-stepper
+│                         menu-toggle, menu-stepper, form-field, form-select, link-button
 ├── js/                ← MainScript (client SPA), SetupScript
 ├── css/               ← MainStyle, SetupStyle (thème clair/sombre)
 ├── svg/               ← icônes inline

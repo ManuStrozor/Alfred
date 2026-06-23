@@ -1,0 +1,13 @@
+<div class="form-group">
+    <label for="<?= id ?>"><?= label ?><?!= (typeof hint !== 'undefined' && hint) ? ' <span class="label-hint">' + hint + '</span>' : '' ?></label>
+    <input
+        id="<?= id ?>"
+        type="<?= type ?>"
+        class="form-input"
+        placeholder="<?!= typeof placeholder !== 'undefined' ? placeholder : '' ?>"
+        autocomplete="<?!= typeof autocomplete !== 'undefined' ? autocomplete : '' ?>"
+        <?!= (typeof step !== 'undefined' && step) ? `step="${step}"` : '' ?>
+        <?!= (typeof min !== 'undefined' && min) ? `min="${min}"` : '' ?>
+        <?!= (typeof maxlength !== 'undefined' && maxlength) ? `maxlength="${maxlength}"` : '' ?>
+        <?!= (typeof required !== 'undefined' && required) ? 'required' : '' ?>>
+</div>

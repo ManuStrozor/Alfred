@@ -14,14 +14,8 @@
         Un proche (parent, conjoint, ami) prévenu par email lorsque le mois devient
         difficile (météo Orage). Une seule alerte par épisode.
       </p>
-      <div class="form-group">
-        <label for="mammoth-name">Nom du Mammouth</label>
-        <input id="mammoth-name" type="text" class="form-input" placeholder="Camille" autocomplete="off">
-      </div>
-      <div class="form-group">
-        <label for="mammoth-email">Email du Mammouth</label>
-        <input id="mammoth-email" type="email" class="form-input" placeholder="camille@exemple.fr" autocomplete="off">
-      </div>
+      <?!= include('items/form-field', { id: 'mammoth-name', label: 'Nom du Mammouth', type: 'text', placeholder: 'Camille', autocomplete: 'off' }) ?>
+      <?!= include('items/form-field', { id: 'mammoth-email', label: 'Email du Mammouth', type: 'email', placeholder: 'camille@exemple.fr', autocomplete: 'off' }) ?>
       <div class="form-group">
         <label for="mammoth-message">Message (laisser vide pour le message par défaut)</label>
         <textarea id="mammoth-message" class="form-input" rows="4" placeholder="Coucou, le mois est un peu serré…"></textarea>

@@ -29,7 +29,7 @@
     <ul class="month-trans-list" id="recent-trans-list">
       <li class="skeleton skel-box"></li>
     </ul>
-    <button id="btn-show-all-trans" class="show-all-btn">Tout afficher →</button>
+    <?!= include('items/link-button', { id: 'btn-show-all-trans', label: 'Tout afficher →' }) ?>
   </div>
 
   <!-- Donut chart — répartition budgétaire -->
@@ -41,7 +41,7 @@
         <div class="skeleton skel-box"></div>
       </div>
     </div>
-    <button id="btn-see-charges" class="show-all-btn">Voir les charges →</button>
+    <?!= include('items/link-button', { id: 'btn-see-charges', label: 'Voir les charges →' }) ?>
   </div>
 
 </section>

@@ -7,10 +7,7 @@
     <div id="action-close-info"></div>
 
     <div style="margin-bottom:16px;">
-      <div class="form-group">
-        <label for="salary-input">Salaire reçu (€)</label>
-        <input id="salary-input" type="number" step="0.01" min="0" placeholder="0.00">
-      </div>
+      <?!= include('items/form-field', { id: 'salary-input', label: 'Salaire reçu (€)', type: 'number', step: '0.01', min: '0', placeholder: '0.00' }) ?>
     </div>
 
     <div id="action-close-confirm">
