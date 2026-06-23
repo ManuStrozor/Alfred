@@ -179,12 +179,26 @@
     return r;
   }
 
-  function _showSkeleton(id, kind = 'box') {
+  function _setSkeleton(id, kind = 'box') {
     $(id).innerHTML =
       kind === 'hero' ? '<div class="skeleton skel-hero"></div><div class="skeleton skel-sub"></div>'
         : kind === 'sub' ? '<div class="skeleton skel-sub"></div>'
           : kind === 'li' ? '<li class="skeleton skel-box"></li>'
             : '<div class="skeleton skel-box"></div>';
+  }
+
+  function _showSkeleton(id) {
+    const el = $(id);
+    if (!el) return;
+    _emptyList(id);
+    el.querySelectorAll('.skeleton').forEach(s => s.classList.remove('is-hidden'));
+  }
+
+  function _emptyList(id) {
+    const list = $(id);
+    if (!list) return;
+    list.querySelectorAll('.skeleton').forEach(s => s.classList.add('is-hidden'));
+    [...list.children].forEach(c => { if (!c.classList.contains('is-hidden')) c.remove(); });
   }
 
   function logoSpinner(size = 20) {
@@ -334,7 +348,7 @@
     $('forecast-period-label').textContent = 'sur ' + data.periodText;
     $('month-trans-title').textContent = 'Transactions · ' + lbl.textContent;
     renderBalances(cur);
-    _renderTransList('recent-trans-list', STATE.transLimit);
+    _renderTransList('recent-trans-list', _trans.items, STATE.transLimit);
     renderForecast();
     _maybeShowGemini();
   }
@@ -390,14 +404,36 @@
     `;
   }
 
-  function _renderTransList(listId, limit) {
+  function _renderTransList(listId, items, limit) {
     const list = $(listId);
-    if (!_trans.items.length) {
-      list.innerHTML = '<li class="month-trans-empty">Aucune transaction ce mois</li>';
+    if (!items.length) {
+      _emptyList(listId);
+      const empty = document.createElement('li');
+      list.appendChild(empty).classList.add('month-trans-empty');
+      empty.textContent = 'Aucune transaction ce mois';
       return;
     }
-    const items = limit ? _trans.items.slice(0, limit) : _trans.items;
-    list.innerHTML = items.map(_transItemHtml).join('');
+    items = (typeof limit !== 'undefined' && limit > 0) ? items.slice(0, limit) : items;
+    if (items.length > 0) {
+      _emptyList(listId);
+      const templateItem = list.lastElementChild;
+      if (templateItem) {
+        items.map(item => {
+          const newOne = templateItem.cloneNode(true);
+          const sub = [item.rule, item.category].filter(Boolean).join(' · ') || '—';
+          newOne.dataset.row = item.row;
+          if (item.archived) newOne.dataset.archived = '1';
+          newOne.querySelector('.month-trans-date').textContent = escHtml(item.date);
+          newOne.querySelector('.month-trans-label').textContent = escHtml(item.label, true);
+          newOne.querySelector('.month-trans-sub').textContent = escHtml(sub, true);
+          const monthTransAmountEl = newOne.querySelector('.month-trans-amount');
+          monthTransAmountEl.textContent = fmt(item.amount);
+          monthTransAmountEl.classList.toggle('positive', item.amount >= 0);
+          newOne.classList.remove('is-hidden');
+          list.appendChild(newOne);
+        }).join('');
+      }
+    }
     list.querySelectorAll('.month-trans-item:not([data-archived])').forEach(makeSwipeable);
   }
 
@@ -454,15 +490,15 @@
   }
 
   function loadAppData() {
-    _showSkeleton('budget-value', 'hero');
-    _showSkeleton('goal-line', 'sub');
+    _setSkeleton('budget-value', 'hero');
+    _setSkeleton('goal-line', 'sub');
     $('meteo-line').classList.remove('is-visible');
     $('linked-account-cards').classList.remove('is-visible');
-    _showSkeleton('recent-trans-list', 'li');
-    _showSkeleton('eval-result');
-    _showSkeleton('forecast-list', 'li');
-    _showSkeleton('charges-list');
-    _showSkeleton('task-list-container');
+    _showSkeleton('recent-trans-list');
+    _setSkeleton('eval-result');
+    _setSkeleton('forecast-list', 'li');
+    _setSkeleton('charges-list');
+    _setSkeleton('task-list-container');
     _resetDonut();
 
     const onLoadError = _ => {
@@ -628,7 +664,7 @@
     $('donut-center-val').innerHTML = '';
     $('donut-center-pct').innerHTML = '';
     $('donut-center-lbl').innerHTML = '';
-    _showSkeleton('donut-legend');
+    _setSkeleton('donut-legend');
   }
 
   function loadBudgetRules() {
@@ -1221,7 +1257,7 @@
     persist: false,
     onLabel: 'Masqués', offLabel: 'Affichés',
     onChange: _ => {
-      _renderTransList('recent-trans-list', STATE.transLimit);
+      _renderTransList('recent-trans-list', _trans.items, STATE.transLimit);
       if (_cache.balances) renderLinkedAccountCards(_cache.balances);
       if (_charges.loaded) renderPrevList();
       renderForecast();
@@ -1264,10 +1300,10 @@
     runner('Sauvegarde transLimit', null, _ => {
       STATE.transLimit = prev; // rollback si la persistance échoue
       updateTransLimitUI();
-      _renderTransList('recent-trans-list', STATE.transLimit);
+      _renderTransList('recent-trans-list', _trans.items, STATE.transLimit);
     }).setUserPref('transLimit', next);
     updateTransLimitUI();
-    _renderTransList('recent-trans-list', STATE.transLimit);
+    _renderTransList('recent-trans-list', _trans.items, STATE.transLimit);
   }
   $('btn-trans-limit-minus').addEventListener('click', _ => changeTransLimit(-1));
   $('btn-trans-limit-plus').addEventListener('click', _ => changeTransLimit(+1));
@@ -1573,7 +1609,7 @@
   }
 
   $('btn-open-props').addEventListener('click', _ => {
-    _showSkeleton('props-list');
+    _setSkeleton('props-list');
     _openModal('props');
     _cache.props = null;
     runner('Properties', props => {
@@ -1697,7 +1733,7 @@
 
   /* ── Chargement ── */
   function loadPrevLines() {
-    _showSkeleton('charges-list');
+    _setSkeleton('charges-list');
     runner('Charges', data => {
       _charges.lines = data.lines;
       _charges.types = data.types;
@@ -1848,7 +1884,10 @@
             </div>
           </div>
         </div>
-        ${swipeActionsDiv}
+        <div class="swipe-actions">
+          <button class="swipe-edit" type="button" aria-label="Modifier">✏️</button>
+          <button class="swipe-del" type="button" aria-label="Supprimer">🗑️</button>
+        </div>
       </div>
     </div>
     `;

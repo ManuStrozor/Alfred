@@ -27,7 +27,8 @@
   <div class="card" id="card-recent-trans">
     <div class="card-title">Transactions récentes</div>
     <ul class="month-trans-list" id="recent-trans-list">
-      <li class="skeleton skel-box"></li>
+      <li class="skeleton skel-box is-hidden"></li>
+      <?!= include('items/transaction-item') ?>
     </ul>
     <?!= include('items/link-button', { id: 'btn-show-all-trans', label: 'Tout afficher →' }) ?>
   </div>
