@@ -4,10 +4,11 @@
         id="<?= id ?>"
         type="<?= type ?>"
         class="form-input"
-        placeholder="<?= (typeof placeholder !== 'undefined' && placeholder) ? placeholder : '' ?>"
-        autocomplete="<?= (typeof autocomplete !== 'undefined' && autocomplete) ? autocomplete : '' ?>"
-        <?= (typeof step !== 'undefined' && step) ? `step="${step}"` : '' ?>
-        <?= (typeof min !== 'undefined' && min) ? `min="${min}"` : '' ?>
-        <?= (typeof maxlength !== 'undefined' && maxlength) ? `maxlength="${maxlength}"` : '' ?>
-        <?= (typeof required !== 'undefined' && required) ? 'required' : '' ?>>
+        <?!= (typeof placeholder !== 'undefined' && placeholder) ? `placeholder="${placeholder}"` : '' ?>
+        <?!= (typeof autocomplete !== 'undefined' && autocomplete) ? `autocomplete="${autocomplete}"` : '' ?>
+        <?!= (typeof step !== 'undefined' && step) ? `step="${step}"` : '' ?>
+        <?!= (typeof min !== 'undefined' && min) ? `min="${min}"` : '' ?>
+        <?!= (typeof maxlength !== 'undefined' && maxlength) ? `maxlength="${maxlength}"` : '' ?>
+        <?= (typeof required !== 'undefined' && required) ? 'required' : '' ?>
+    />
 </div>
