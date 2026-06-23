@@ -119,7 +119,7 @@ Les clés et la session sont stockées dans les `UserProperties` préfixées `EB
 
 ## Application web
 
-SPA servie par GAS HtmlService. `App.html` assemble les partials via `include()` / `includes([])`. Le dossier `gas/` est le `rootDir` clasp :
+SPA servie par GAS HtmlService. `App.html` assemble les partials via `include(file, params?)` / `includes([...])`. Les **items** (`gas/items/`) sont des partials réutilisables **paramétrés**, évalués côté serveur (scriptlets `<?= param ?>`, ex. `include('items/modal-header', { name, title })`). Le dossier `gas/` est le `rootDir` clasp :
 
 ```
 gas/
@@ -132,10 +132,12 @@ gas/
 ├── modals/            ← Menu, Meteo, MonthTrans, Transaction, Payday, PrevLine,
 │                         Connect, Accounts, Props, Charges, Taches, Outils, Comptes,
 │                         Parametres, Profil, Confidentialite, Appearance, Interface, Systeme
-├── js/                ← *.html (JS client SPA)
-├── css/               ← *.html (CSS global, thème clair/sombre)
-├── svg/               ← *.html (SVGs)
-└── img/               ← *.html (base64 images)
+├── items/             ← partials paramétrés : modal-header, menu-button, menu-link,
+│                         menu-toggle, menu-stepper
+├── js/                ← MainScript (client SPA), SetupScript
+├── css/               ← MainStyle, SetupStyle (thème clair/sombre)
+├── svg/               ← icônes inline
+└── img/               ← images base64
 ```
 
 ### Navigation
@@ -152,7 +154,7 @@ gas/
 
 ### Fonctionnalités
 
-- **Budget** — solde disponible du mois courant, comptes bancaires liés (soldes via Enable Banking), transactions récentes, donut de répartition par règle (`Besoins` / `Envies` / `Epargne` / `Dette`)
+- **Budget** — solde disponible du mois courant, comptes bancaires liés (soldes via Enable Banking), transactions récentes, donut de répartition par règle (`Besoins` / `Envies` / `Epargne` / `Dette`) avec **anneau-cible 50/30/20 adaptatif** (Besoins + Dette subis, le reste réparti Envies/Épargne)
 - **Météo budgétaire** — indicateur ⛈️ → ☀️ basé sur le ratio marge du jour / rythme prévu par jour
 - **Objectif de dépense/jour** — sélecteur (Profil) ; sur la card Budget, indique si l'objectif est tenable jusqu'à la fin du mois ou dans combien de jours le budget s'épuise
 - **Le Mammouth** — alerte email optionnelle d'un proche lorsque le mois devient difficile (météo Orage), une seule alerte par épisode
@@ -167,6 +169,7 @@ gas/
 - **Masquer les montants** — remplace les valeurs par `••••• €` (éphémère, jamais persisté)
 - **Thème clair / sombre** — toggle persisté, transition sans flash
 - **Pull-to-refresh** — swipe vers le bas en haut de page pour recharger (spinner logo animé)
+- **Retour rapide** — croix ✕ dans l'en-tête des modaux profonds pour revenir directement à l'accueil
 
 ### Déploiement
 
@@ -174,9 +177,8 @@ Le code est poussé vers Google Apps Script via **clasp** + **GitHub Actions** :
 
 | Workflow | Déclencheur |
 |---|---|
-| `ci.yml` | Tests Jest (sur PR / push) |
-| `deploy-dev.yml` | Push sur `dev` → déploiement de l'environnement de test |
-| `deploy.yml` | Merge sur `main` → tests puis `clasp push` |
+| `test.yml` | Réutilisable (`workflow_call` / `workflow_dispatch`) : détecte les fichiers changés (`dorny/paths-filter`) puis lance Jest, `build:test` et les e2e Playwright selon ce qui a changé |
+| `deploy.yml` | Release publiée **ou** push sur `dev` touchant `gas/**` → tests (via `test.yml`) puis `clasp push` + `clasp deploy` (description = `github.ref_name`) |
 
 1. **Pré-requis** : `npm install -g @google/clasp` puis `clasp login`
 2. Renseigner le `scriptId` dans `.clasp.json` (`rootDir` = `gas`)
@@ -253,10 +255,16 @@ Sheets (menu classique)
 | `npm run build` | Minifie `gas/Alfred.js` → `gas/Alfred.min.js` |
 | `npm run test:min` | Tests sur `gas/Alfred.min.js` (valide que la minification ne casse rien) |
 | `npm run build:test` | Enchaîne `build` puis `test:min` |
+| `npm run test:e2e` | Tests end-to-end Playwright (canal **msedge**) sur le client mocké |
+| `npm run test:e2e:cov` | Tests e2e + rapport de couverture du JS client (monocart) |
+| `npm run test:e2e:ui` | Playwright en mode UI |
+| `npm run e2e:codegen` | Enregistreur Playwright pour générer un test depuis l'UI |
 | `clasp push` | Pousse les sources vers Google Apps Script manuellement |
 | `clasp pull` | Récupère l'état courant du projet GAS |
 
-> Les tests sont chargés en `vm.runInContext` (`__tests__/helpers/gas-env.js` pour le backend, `client-env.js` pour le client). istanbul n'instrumente pas ce mode : `test:cov` ne couvre que les helpers.
+> **Tests unitaires Jest** (`__tests__/`) — chargés en `vm.runInContext` (`helpers/gas-env.js` pour le backend, `client-env.js` pour le client). istanbul n'instrumente pas ce mode : `test:cov` ne couvre que les helpers.
+>
+> **Tests e2e Playwright** (`e2e/`) — `build-harness.mjs` assemble `App.html` (résolution récursive des `include`/items paramétrés) en un `index.html` statique avec `google.script.run` **mocké** par fixtures, servi en local et piloté sur **msedge**. Le JS client est extrait en `script.js` pour une couverture V8 mappée (`monocart-coverage-reports`, via `test:e2e:cov`). Règle projet : **tout changement HTML doit être couvert par un spec e2e**.
 
 ---
 
@@ -267,7 +275,7 @@ Sheets (menu classique)
 ### Workflow
 
 1. **Branche `dev` = zone d'accumulation.** Plusieurs features sont mergées sur `dev` sans bump de version. `deploy-dev.yml` fournit un environnement de test à chaque push.
-2. **Le bump de version n'a lieu que dans le dernier commit avant la PR `dev → main`.** Les commits intermédiaires ne touchent pas `gas/shared/Menu.html`.
+2. **Le bump de version n'a lieu que dans le dernier commit avant la PR `dev → main`.** Les commits intermédiaires ne touchent pas `gas/modals/Menu.html`.
 
 ### Critères pour ouvrir une PR `dev → main`
 
@@ -295,7 +303,7 @@ La release est **différée** si :
 | **MINOR** `x.+1.0` | Nouvelles features bundlées, rétro-compat | v2.5.0 → v2.6.0 |
 | **MAJOR** `+1.0.0` | Refonte ou breaking change | v2.5.0 → v3.0.0 |
 
-La version est affichée dans `gas/shared/Menu.html` (`<p class="app-version">`).
+La version est affichée dans `gas/modals/Menu.html` (`<p class="app-version">`).
 
 ### Question miroir avant chaque release
 
