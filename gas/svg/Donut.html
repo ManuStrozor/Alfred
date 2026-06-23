@@ -1,0 +1,15 @@
+<svg class="donut-svg" viewBox="0 0 200 200" id="donut-svg">
+    <!-- track -->
+    <circle class="donut-track" cx="100" cy="100" r="70" />
+    <!-- anneau de référence (cible 50/30/20 adaptée, filled by JS) -->
+    <g id="donut-target" transform="rotate(-90 100 100)"></g>
+    <!-- segments (filled by JS) -->
+    <g id="donut-segments" transform="rotate(-90 100 100)"></g>
+    <!-- centre -->
+    <text id="donut-center-val" x="100" y="90" text-anchor="middle" font-size="17" font-weight="800"
+        fill="var(--clr-text)"></text>
+    <text id="donut-center-pct" x="100" y="107" text-anchor="middle" font-size="11" font-weight="700"
+        fill="rgba(var(--surface-rgb),0.6)"></text>
+    <text id="donut-center-lbl" x="100" y="121" text-anchor="middle" font-size="9"
+        fill="rgba(var(--surface-rgb),0.4)"></text>
+</svg>
