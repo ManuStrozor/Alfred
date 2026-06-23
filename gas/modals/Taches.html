@@ -2,13 +2,7 @@
 <div id="modal-taches" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet modal-sheet--large">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="taches-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title">Tâches</span>
-        <button id="taches-exit" class="modal-nav" aria-label="Retour à l'accueil">✕</button>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'taches', title: 'Menu · Tâches' }) ?>
 
     <div id="task-list-container">
       <div class="skeleton skel-box"></div>

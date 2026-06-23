@@ -2,25 +2,10 @@
 <div id="modal-outils" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="outils-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title">Menu · Outils</span>
-        <button id="outils-exit" class="modal-nav" aria-label="Retour à l'accueil">✕</button>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'outils', title: 'Menu · Outils' }) ?>
 
     <ul class="action-list">
-      <li>
-        <button class="action-item" id="btn-open-payday">
-          <span class="action-item-icon">💰</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Passer en paie</div>
-            <div class="action-item-desc">Clôturer le mois en cours</div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
+      <?!= include('items/menu-button', { name: 'payday', icon: '💰', label: 'Passer en paie', desc: 'Clôturer le mois en cours' }) ?>
     </ul>
 
   </div>

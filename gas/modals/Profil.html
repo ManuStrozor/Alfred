@@ -2,13 +2,7 @@
 <div id="modal-profil" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="profil-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title">Paramètres · Profil</span>
-        <button id="profil-exit" class="modal-nav" aria-label="Retour à l'accueil">✕</button>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'profil', title: 'Paramètres · Profil' }) ?>
 
     <ul class="action-list">
       <li>
@@ -27,18 +21,7 @@
       </li>
 
       <!-- Le Mammouth : prévenir un proche en cas de mois difficile -->
-      <li>
-        <div class="action-item action-item--static">
-          <span class="action-item-icon">🦣</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Le Mammouth</div>
-            <div class="action-item-desc" id="mammoth-desc">Désactivé</div>
-          </div>
-          <button class="action-toggle" id="toggle-mammoth-btn" type="button" aria-label="Activer Le Mammouth">
-            <span class="toggle-circle"></span>
-          </button>
-        </div>
-      </li>
+      <?!= include('items/menu-toggle', { name: 'mammoth', icon: '🦣', label: 'Le Mammouth', defaultLabel: 'Désactivé' }) ?>
     </ul>
 
     <div id="mammoth-fields" class="mammoth-fields">

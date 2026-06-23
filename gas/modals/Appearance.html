@@ -2,37 +2,11 @@
 <div id="modal-appearance" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="appearance-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title">Paramètres · Apparence</span>
-        <button id="appearance-exit" class="modal-nav" aria-label="Retour à l'accueil">✕</button>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'appearance', title: 'Paramètres · Apparence' }) ?>
 
     <ul class="action-list">
-      <li>
-        <div class="action-item">
-          <span class="action-item-icon">🌓</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Thème</div>
-            <div class="action-item-desc" id="theme-desc">Mode sombre</div>
-          </div>
-          <button class="action-toggle" id="toggle-theme-btn" type="button" aria-label="Basculer le thème">
-            <span class="toggle-circle"></span>
-          </button>
-        </div>
-      </li>
-      <li>
-        <button class="action-item" id="btn-open-interface">
-          <span class="action-item-icon">🧩</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Interface</div>
-            <div class="action-item-desc">Aperçu transactions · libellés nav · splash</div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
+      <?!= include('items/menu-toggle', { name: 'theme', icon: '🌓', label: 'Thème', defaultLabel: 'Mode sombre' }) ?>
+      <?!= include('items/menu-button', { name: 'interface', icon: '🧩', label: 'Interface', desc: 'Aperçu transactions · libellés nav · splash' }) ?>
     </ul>
 
   </div>

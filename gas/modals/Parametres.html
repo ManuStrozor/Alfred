@@ -2,55 +2,13 @@
 <div id="modal-parametres" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="parametres-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title">Menu · Paramètres</span>
-        <button id="parametres-exit" class="modal-nav" aria-label="Retour à l'accueil">✕</button>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'parametres', title: 'Menu · Paramètres' }) ?>
 
     <ul class="action-list">
-      <li>
-        <button class="action-item" id="btn-open-profil">
-          <span class="action-item-icon">👤</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Profil</div>
-            <div class="action-item-desc"></div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
-      <li>
-        <button class="action-item" id="btn-open-confidentialite">
-          <span class="action-item-icon">🔒</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Confidentialité</div>
-            <div class="action-item-desc">Masquage des montants</div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
-      <li>
-        <button class="action-item" id="btn-open-appearance">
-          <span class="action-item-icon">🎨</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Apparence</div>
-            <div class="action-item-desc">Thème · Interface</div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
-      <li>
-        <button class="action-item" id="btn-open-systeme">
-          <span class="action-item-icon">⚙️</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Système</div>
-            <div class="action-item-desc">Auto-import · Propriétés</div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
+      <?!= include('items/menu-button', { name: 'profil',          icon: '👤', label: 'Profil',          desc: '' }) ?>
+      <?!= include('items/menu-button', { name: 'confidentialite', icon: '🔒', label: 'Confidentialité', desc: 'Masquage des montants' }) ?>
+      <?!= include('items/menu-button', { name: 'appearance',      icon: '🎨', label: 'Apparence',       desc: 'Thème · Interface' }) ?>
+      <?!= include('items/menu-button', { name: 'systeme',         icon: '⚙️', label: 'Système',         desc: 'Auto-import · Propriétés' }) ?>
     </ul>
 
   </div>

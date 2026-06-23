@@ -2,13 +2,7 @@
 <div id="modal-interface" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-sheet">
 
-    <div class="modal-sheet-header">
-      <div class="modal-header">
-        <button id="interface-back" class="modal-nav" aria-label="Retour">‹</button>
-        <span class="modal-title">Apparence · Interface</span>
-        <button id="interface-exit" class="modal-nav" aria-label="Retour à l'accueil">✕</button>
-      </div>
-    </div>
+    <?!= include('items/modal-header', { name: 'interface', title: 'Apparence · Interface' }) ?>
 
     <ul class="action-list">
       <li>
@@ -25,30 +19,8 @@
           </div>
         </div>
       </li>
-      <li>
-        <div class="action-item">
-          <span class="action-item-icon">🏷️</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Masquer les libellés nav</div>
-            <div class="action-item-desc" id="nav-labels-desc">Affichés</div>
-          </div>
-          <button class="action-toggle" id="toggle-nav-labels-btn" type="button" aria-label="Basculer libellés nav bar">
-            <span class="toggle-circle"></span>
-          </button>
-        </div>
-      </li>
-      <li>
-        <div class="action-item">
-          <span class="action-item-icon">🌅</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Désactiver le Splash</div>
-            <div class="action-item-desc" id="splash-desc">Activé</div>
-          </div>
-          <button class="action-toggle" id="toggle-splash-btn" type="button" aria-label="Basculer splash">
-            <span class="toggle-circle"></span>
-          </button>
-        </div>
-      </li>
+      <?!= include('items/menu-toggle', { name: 'nav-labels', icon: '🏷️', label: 'Masquer les libellés nav', defaultLabel: 'Affichés' }) ?>
+      <?!= include('items/menu-toggle', { name: 'splash', icon: '🌅', label: 'Désactiver le Splash', defaultLabel: 'Activé' }) ?>
     </ul>
 
   </div>

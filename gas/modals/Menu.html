@@ -21,36 +21,9 @@
           <span class="action-item-chevron">›</span>
         </button>
       </li>
-      <li>
-        <button class="action-item" id="btn-open-outils">
-          <span class="action-item-icon">🛠️</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Outils</div>
-            <div class="action-item-desc">Passer en paie</div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
-      <li>
-        <button class="action-item" id="btn-open-comptes">
-          <span class="action-item-icon">🏦</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Comptes</div>
-            <div class="action-item-desc">Connexion · comptes affichés</div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
-      <li>
-        <button class="action-item" id="btn-open-parametres">
-          <span class="action-item-icon">⚙️</span>
-          <div class="action-item-body">
-            <div class="action-item-label">Paramètres</div>
-            <div class="action-item-desc">Confidentialité · Apparence · Système</div>
-          </div>
-          <span class="action-item-chevron">›</span>
-        </button>
-      </li>
+      <?!= include('items/menu-button', { name: 'outils', icon: '🛠️', label: 'Outils', desc: 'Passer en paie' }) ?>
+      <?!= include('items/menu-button', { name: 'comptes', icon: '🏦', label: 'Comptes', desc: 'Connexion · comptes affichés' }) ?>
+      <?!= include('items/menu-button', { name: 'parametres', icon: '⚙️', label: 'Paramètres', desc: 'Confidentialité · Apparence · Système' }) ?>
     </ul>
 
     <p class="app-version">v3.0.0</p>

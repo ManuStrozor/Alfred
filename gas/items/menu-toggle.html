@@ -1,0 +1,12 @@
+<li>
+    <div class="action-item">
+        <span class="action-item-icon"><?= icon || '❓' ?></span>
+        <div class="action-item-body">
+            <div class="action-item-label"><?= label ?></div>
+            <div class="action-item-desc" id="<?= name ?>-desc"><?= defaultLabel ?></div>
+        </div>
+        <button class="action-toggle" id="toggle-<?= name ?>-btn" type="button" aria-label="Basculer <?= label ?>">
+            <span class="toggle-circle"></span>
+        </button>
+    </div>
+</li>
