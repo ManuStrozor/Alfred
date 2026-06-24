@@ -31,3 +31,15 @@ jobs:
         run: clasp push --force
       - name: Deploy new version
         run: clasp deploy --deploymentId "${{ vars.DEPLOY_ID }}" --description "${{ github.ref_name }}"
+
+      # Notifie le succès → lancer `npm run dump:rendered` en local pour vérifier le rendu
+      - name: Notifier le déploiement (ntfy)
+        if: success()
+        continue-on-error: true
+        run: |
+          curl -s \
+            -H "Title: Alfred déployé (${{ github.ref_name }})" \
+            -H "Tags: white_check_mark" \
+            -H "Click: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -d "Déploiement réussi — lance « npm run dump:rendered » pour vérifier le rendu." \
+            "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}"

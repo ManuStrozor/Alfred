@@ -8,13 +8,6 @@
 
   const navBtns = $All('.nav-btn');
 
-  const swipeActionsDiv = `
-    <div class="swipe-actions">
-        <button class="swipe-edit" type="button" aria-label="Modifier">✏️</button>
-        <button class="swipe-del" type="button" aria-label="Supprimer">🗑️</button>
-    </div>
-    `;
-
   const STATE = {
     ...window.ALFRED_PREFS,
     hideAmounts: false,
@@ -383,26 +376,6 @@
 
   /* ══ Transactions ══════════════════════════════════════════════════
      Rendu, CRUD et modal des transactions du mois courant.          */
-
-  function _transItemHtml(r) {
-    const sub = [r.rule, r.category].filter(Boolean).join(' · ') || '—';
-    // Lignes archivées (mois clôturé rouvert) : lecture seule, pas d'édition/suppression
-    return `
-      <li class="month-trans-item" data-row="${r.row}"${r.archived ? ' data-archived="1"' : ''}>
-        <div class="swipe-slider">
-          <div class="trans-main">
-            <span class="month-trans-date">${escHtml(r.date)}</span>
-            <div class="month-trans-body">
-              <span class="month-trans-label">${escHtml(r.label, true)}</span>
-              <span class="month-trans-sub">${escHtml(sub, true)}</span>
-            </div>
-            <span class="month-trans-amount ${r.amount >= 0 ? 'positive' : 'negative'}">${fmt(r.amount)}</span>
-          </div>
-          ${swipeActionsDiv}
-        </div>
-      </li>
-    `;
-  }
 
   function _renderTransList(listId, items, limit) {
     const list = $(listId);
@@ -983,12 +956,7 @@
     $('btn-mt-filter').classList.toggle('has-filters', activeCount > 0);
     _renderMtChips();
 
-    if (!items.length) {
-      list.innerHTML = '<li class="month-trans-empty">Aucune transaction</li>';
-      return;
-    }
-    list.innerHTML = items.map(_transItemHtml).join('');
-    list.querySelectorAll('.month-trans-item:not([data-archived])').forEach(makeSwipeable);
+    _renderTransList('month-trans-list', items);
   }
 
   /** Rend une barre de chips de filtre dans #wrapId. chips: [{key,label}]. onRemove(key) au clic ✕. */
@@ -1070,11 +1038,11 @@
   _bindModal('menu');
 
   $('btn-link-rgpd').addEventListener('click', _ => {
-    window.open('https://sites.google.com/view/alfred-rgpd', '_blank');
+    window.open('https:\/\/sites.google.com/view/alfred-rgpd', '_blank');
   });
 
   $('btn-link-conds').addEventListener('click', _ => {
-    window.open('https://sites.google.com/view/alfred-conds', '_blank');
+    window.open('https:\/\/sites.google.com/view/alfred-conds', '_blank');
   });
 
   $('btn-open-appearance').addEventListener('click', _ => _openModal('appearance'));

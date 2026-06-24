@@ -7,3 +7,5 @@ test-results/
 playwright-report/
 coverage-e2e/
 .coverage-raw/
+.edge-profile/
+rendered-script.js

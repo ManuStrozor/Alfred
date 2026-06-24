@@ -9,6 +9,7 @@
     "test:min":   "cross-env ALFRED_FILE=gas/Alfred.min.js jest",
     "build:test": "npm run build && npm run test:min",
     "check:client": "node scripts/check-client.mjs",
+    "dump:rendered": "node e2e/dump-rendered.mjs",
     "e2e:build":  "node e2e/build-harness.mjs",
     "e2e:serve":  "node e2e/build-harness.mjs && node e2e/serve.mjs",
     "e2e:codegen": "playwright codegen --channel=msedge http://localhost:4317",
