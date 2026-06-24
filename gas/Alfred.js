@@ -1685,14 +1685,13 @@ function _importRevolutCore() {
   const rows = [];
 
   for (const t of transactions) {
-    if ((t.transaction_amount?.currency || 'EUR') !== 'EUR') continue; // hors devise
-
-    const date   = t.booking_date;
-    const raw    = parseFloat(t.transaction_amount?.amount ?? 0);
-    // credit_debit_indicator : CRDT = crédit (positif), DBIT = débit (négatif)
+    if (!t.transaction_amount) continue;
     const isDbit  = t.credit_debit_indicator === 'DBIT';
-    const amount  = isDbit ? -Math.abs(raw) : Math.abs(raw);
-    const label   = (t.remittance_information?.[0] || t.creditor?.name || t.debtor?.name || '').trim();
+    const date   = t.booking_date;
+    const raw    = parseFloat(t.transaction_amount.amount);
+    const amount  = isDbit ? -raw : raw;
+    const xtorName = isDbit ? t.creditor.name : t.debtor.name;
+    const label   = (t.remittance_information?.[0] || xtorName || t.entry_reference).trim();
     const key     = date + '|' + amount + '|' + label.toLowerCase();
 
     const idx = existing.indexOf(key);
