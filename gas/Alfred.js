@@ -331,20 +331,6 @@ const LA = { id: 'LA', rate: parseFloat(LA_RATE), ceiling: parseFloat(LA_CEILING
 const CSL = { id: 'CSL', rate: 0, ceiling: null };
 const SAVINGS_ACCOUNTS = [LEP, LA, CSL];
 
-// Lignes de départ des colonnes de sortie dans l'onglet Budgets.
-// ROW_TIMELINE : dates (col A).
-// ROW_BALANCE : soldes budget (col B) et épargne (cols C-E) démarrent ligne 3.
-const ROW_TIMELINE  = 4;
-const ROW_BALANCE = 3;
-
-const COOR = {
-  dat:  { col: 1, row: ROW_TIMELINE },
-  rev:  { col: 2, row: ROW_BALANCE },
-  lep:  { col: 3, row: ROW_BALANCE },
-  la:   { col: 4, row: ROW_BALANCE },
-  csl:{ col: 5, row: ROW_BALANCE },
-};
-
 const APP   = 'Alfred';
 const TITSP = APP + ' - Répartir une dépense';
 const SL    = 'sans libellé';
@@ -577,16 +563,15 @@ function _collectClosingInfo(closingYear, closingMonth) {
 
 /**
  * Soldes épargne au moment de la clôture (inscrits dans Historique).
- * Source de vérité : valeurs calculées côté client, transmises par paydayWeb.
- * Fallback transitionnel sur les soldes écrits dans Budgets si absents (retiré en Phase 4).
- * @param {{lep:number, la:number, csl:number}} [balances]
+ * Source de vérité : valeurs calculées côté client, transmises par paydayWeb. Le serveur ne
+ * calcule plus le forecast (les cellules de soldes de Budgets ne sont plus alimentées), donc
+ * aucun repli sur la sheet : on exige des soldes valides pour ne pas archiver de données obsolètes.
+ * @param {{lep:number, la:number, csl:number}} balances
  */
 function _closingBalances(balances) {
-  if (balances && typeof balances.lep === 'number') {
-    return { lep: balances.lep, la: balances.la, csl: balances.csl };
-  }
-  const [lep, la, csl] = BUD_TAB.getRange(ROW_BALANCE, COOR.lep.col, 1, 3).getValues()[0];
-  return { lep, la, csl };
+  const ok = balances && ['lep', 'la', 'csl'].every(k => typeof balances[k] === 'number');
+  if (!ok) throw new Error(`Soldes épargne manquants : rechargez l'application avant de clôturer.`);
+  return { lep: balances.lep, la: balances.la, csl: balances.csl };
 }
 
 function _ensureSheetWithHeader(name, header) {

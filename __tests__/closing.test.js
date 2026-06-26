@@ -9,15 +9,14 @@ describe('_closingBalances — frontière de confiance (Phase 3)', () => {
       .toEqual({ lep: 9800.5, la: 5000, csl: 1000 });
   });
 
-  test('soldes absents → fallback lecture sheet, sans lever', () => {
-    expect(() => g._closingBalances(null)).not.toThrow();
-    expect(() => g._closingBalances(undefined)).not.toThrow();
+  test('soldes absents → erreur (pas d\'archive de données obsolètes)', () => {
+    // Plus de repli sur la sheet (cellules de soldes non alimentées depuis la Phase 4).
+    expect(() => g._closingBalances(null)).toThrow(/manquants/);
+    expect(() => g._closingBalances(undefined)).toThrow(/manquants/);
   });
 
-  test('payload invalide (lep non numérique) → fallback, pas de confiance aveugle', () => {
-    // typeof balances.lep !== 'number' → on ignore le payload et on relit la sheet.
-    const r = g._closingBalances({ lep: '9800', la: 5000, csl: 1000 });
-    expect(r.lep).not.toBe('9800');
+  test('payload invalide (lep non numérique) → erreur, pas de confiance aveugle', () => {
+    expect(() => g._closingBalances({ lep: '9800', la: 5000, csl: 1000 })).toThrow(/manquants/);
   });
 });
 
