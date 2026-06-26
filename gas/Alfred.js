@@ -644,14 +644,14 @@ function doGet(e) {
       .evaluate()
       .setTitle(APP + ' — Installation')
       .setFaviconUrl('https://drive.google.com/uc?id=1ZsdnRrrR4kexfyypNExnhVHTmiMiqJCV&.png')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, interactive-widget=resizes-content');
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1, interactive-widget=resizes-content');
   }
 
   return HtmlService.createTemplateFromFile('App')
     .evaluate()
     .setTitle(APP)
     .setFaviconUrl('https://drive.google.com/uc?id=1ZsdnRrrR4kexfyypNExnhVHTmiMiqJCV&.png')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, interactive-widget=resizes-content');
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, interactive-widget=resizes-content');
 }
 
 // ----- Multi-user : gestion du classeur par utilisateur -------------------------------------------------------------------------
@@ -737,6 +737,8 @@ function _getFullForecast() {
   const bDate      = BUD_DATE.getValue();
   const currentAbs = toAbsMonth(bDate.getFullYear(), bDate.getMonth());
   const dataMap    = new Map();
+
+  getForecast();
 
   // 1. Mois courant (ROW_BALANCE, cols B–E + G2/I3 pour budgetInit = b_in + b_out + d_in)
   const balRow   = BUD_TAB.getRange(ROW_BALANCE, COOR.rev.col, 1, 4).getValues()[0];
