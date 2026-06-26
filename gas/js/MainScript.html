@@ -346,6 +346,37 @@
     _maybeShowGemini();
   }
 
+  /**
+   * Phase 2 (parallèle-vérif) — calcule le forecast côté client en tâche de fond et le compare
+   * au forecast serveur. Ne pilote PAS l'UI : le serveur reste la source de vérité tant que la
+   * parité n'est pas confirmée. Résultat exposé via window.__forecastParity + log console.
+   */
+  function _verifyForecastParity(inputs, prevs, serverForecast) {
+    if (!inputs || !window.AlfredForecast || !serverForecast) {
+      window.__forecastParity = { skipped: true };
+      return;
+    }
+    try {
+      const client = window.AlfredForecast.compute(inputs, prevs);
+      const sm = serverForecast.months || [];
+      const cm = client.months || [];
+      const diffs = [];
+      if (sm.length !== cm.length) diffs.push({ type: 'length', server: sm.length, client: cm.length });
+      const n = Math.min(sm.length, cm.length);
+      for (let i = 0; i < n; i++) {
+        ['budget', 'lep', 'la', 'csl'].forEach(k => {
+          if (sm[i][k] !== cm[i][k]) diffs.push({ month: sm[i].month, key: k, server: sm[i][k], client: cm[i][k] });
+        });
+      }
+      window.__forecastParity = { ok: diffs.length === 0, checked: n, diffs };
+      if (diffs.length) console.warn('[forecast-parity] écarts client/serveur', diffs);
+      else console.info('[forecast-parity] OK — ' + n + ' mois');
+    } catch (e) {
+      window.__forecastParity = { error: String((e && e.message) || e) };
+      console.warn('[forecast-parity] erreur calcul client', e);
+    }
+  }
+
   function _maybeShowGemini() {
     if (_geminiDone || $('splash')?.classList.contains('is-hidden')) return;
     const GK = 'alfred_gemini_cache';
@@ -411,7 +442,7 @@
   }
 
   /** Applique toutes les données initiales : forecast, donut, selects, tasks, prevs. */
-  function _applyAllData({ forecast, rules, options, savingsProps, shownAccounts, tasks, prevs }) {
+  function _applyAllData({ forecast, forecastInputs, rules, options, savingsProps, shownAccounts, tasks, prevs }) {
     if (savingsProps) _cache.props = savingsProps;
     $('tx-rule').innerHTML = '<option value="">—</option>';
     $('tx-category').innerHTML = '<option value="">—</option>';
@@ -432,6 +463,7 @@
       if (!_charges.filters.month) _charges.filters.month = _absToMmYyyy(_curAbs());
       renderPrevList();
     }
+    _verifyForecastParity(forecastInputs, prevs, forecast);
     _ptrFinish();
   }
 

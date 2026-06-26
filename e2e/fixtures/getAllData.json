@@ -20,6 +20,23 @@
     ],
     "cslName": "CSL"
   },
+  "forecastInputs": {
+    "currentAbs": 24317,
+    "period": 0,
+    "budgetInit": 1500,
+    "cslName": "CSL",
+    "accounts": [
+      { "id": "LEP", "rate": 0.025, "ceiling": 10000 },
+      { "id": "LA",  "rate": 0.015, "ceiling": 22950 },
+      { "id": "CSL", "rate": 0,     "ceiling": null }
+    ],
+    "tranSums": { "24317": 740 },
+    "epargne": {
+      "LEP": { "initialAbs": 24317, "sums": { "24317": 8000 } },
+      "LA":  { "initialAbs": 24317, "sums": { "24317": 20000 } },
+      "CSL": { "initialAbs": 24317, "sums": { "24317": 0 } }
+    }
+  },
   "rules": [
     { "label": "Besoins", "amount": 760 },
     { "label": "Envies",  "amount": 300 },
