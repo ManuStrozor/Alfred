@@ -833,6 +833,70 @@ function _getMonthTransactions() {
   return rows;
 }
 
+/** Somme une Map<absMonth, number[]> en objet {absMonth: total} sérialisable (JSON ne gère pas les Map). */
+function _sumMonthMap(map) {
+  const out = {};
+  for (const [k, arr] of map) out[k] = arr.reduce((s, v) => s + v, 0);
+  return out;
+}
+
+/**
+ * Phase 0 — Données brutes pour recalculer le forecast côté client.
+ * Montants bucketés par mois absolu côté serveur (réutilise indexTran/indexEpargne) afin de
+ * neutraliser tout écart de fuseau au reparsing client. Les lignes Prevs ne sont PAS incluses :
+ * déjà fournies par getPrevLines() (bornes MM/YYYY, sans objet Date → indexables côté client).
+ * Best-effort : ne casse jamais getAllData (try/catch → null ; le client retombe sur le forecast serveur).
+ */
+function _forecastInputs() {
+  try {
+    const period = getPeriod(BUD_PERIOD.getValue());
+    const date   = BUD_DATE.getValue();
+    if (!(date instanceof Date)) return null;
+    const currentAbs = toAbsMonth(date.getFullYear(), date.getMonth());
+
+    // Trans → sommes mensuelles ; complétées depuis Archives si le mois courant y manque (cf. getForecast).
+    const tranMap = indexTran(readSheetData(TRA_TAB, 2), TRA_TAB.getName());
+    if (!tranMap.has(currentAbs) && ARC_TAB) {
+      const arcLastRow = ARC_TAB.getLastRow();
+      if (arcLastRow >= 2) {
+        const arcMap = indexTran(ARC_TAB.getRange(1, 1, arcLastRow, 2).getValues(), ARC_TAB.getName());
+        for (const [month, amounts] of arcMap) {
+          if (!tranMap.has(month)) tranMap.set(month, amounts);
+        }
+      }
+    }
+
+    // Epargne → sommes mensuelles + mois de départ par compte.
+    // initialAbs = 1re clé insérée (ordre du sheet), transmise explicitement car JSON réordonne
+    // les clés numériques d'un objet (epargneCalc démarre le cumul exactement à ce mois).
+    const epaMaps = indexEpargne(readSheetData(EPA_TAB, 3));
+    const epargne = {};
+    for (const acc of SAVINGS_ACCOUNTS) {
+      const map = epaMaps[acc.id];
+      epargne[acc.id] = {
+        initialAbs: map.size ? map.keys().next().value : null,
+        sums:       _sumMonthMap(map),
+      };
+    }
+
+    // budgetInit (mois courant) = b_in + b_out + d_in = G2 + H3 + I2 (cf. _getFullForecast).
+    const initVals   = BUD_TAB.getRange('G2:I3').getValues();
+    const budgetInit = roundCent(initVals[0][0] + initVals[1][1] + initVals[0][2]);
+
+    return {
+      currentAbs,
+      period,
+      budgetInit,
+      cslName:  CSL_NAME,
+      accounts: SAVINGS_ACCOUNTS.map(a => ({ id: a.id, rate: a.rate, ceiling: a.ceiling })),
+      tranSums: _sumMonthMap(tranMap),
+      epargne,
+    };
+  } catch (_) {
+    return null; // transitoire (Phase 0) : le client retombe sur le forecast serveur encore renvoyé.
+  }
+}
+
 /** Web app : supprime la ligne Trans à l'index donné, recalcule et renvoie le forecast. */
 function deleteTransactionByRow(rowIndex) {
   if (!Number.isInteger(rowIndex) || rowIndex < 2) throw new Error('Index invalide : ' + rowIndex);
@@ -1722,6 +1786,7 @@ function getAllData() {
 
   return {
     forecast,
+    forecastInputs:      _forecastInputs(), // Phase 0 — données pour le calcul client (pas encore consommé)
     rules:               getBudgetRules(),
     options:             getTransOptions(),
     savingsProps:        getSavingsProps(undefined, up),
