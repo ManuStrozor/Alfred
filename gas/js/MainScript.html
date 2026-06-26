@@ -381,9 +381,14 @@
   function _notifyMammoth(forecast) {
     const cur = (forecast?.months || []).find(m => m.isCurrent);
     if (!cur) return;
-    google.script.run
-      .withFailureHandler(() => {})
-      .maybeAlertMammoth({ budget: cur.budget, budgetInit: cur.budgetInit });
+    // Best-effort : ne doit JAMAIS casser le chargement. Si l'endpoint est absent (serveur pas
+    // encore redéployé), google.script.run.maybeAlertMammoth n'existe pas → TypeError synchrone
+    // (non capté par withFailureHandler, qui ne gère que les erreurs côté serveur).
+    try {
+      google.script.run
+        .withFailureHandler(() => {})
+        .maybeAlertMammoth({ budget: cur.budget, budgetInit: cur.budgetInit });
+    } catch (_) { /* endpoint indisponible — on ignore */ }
   }
 
   function _maybeShowGemini() {
@@ -466,7 +471,6 @@
 
     const forecast = _computeForecast(forecastInputs, monthTransactions);
     applyForecast(forecast);
-    _notifyMammoth(forecast);
 
     if (shownAccounts) _cache.balances = shownAccounts;
     renderLinkedAccountCards(shownAccounts);
@@ -477,6 +481,7 @@
       renderPrevList();
     }
     _ptrFinish();
+    _notifyMammoth(forecast); // best-effort, en dernier : ne doit pas bloquer le rendu
   }
 
   function renderLinkedAccountCards(accounts) {
