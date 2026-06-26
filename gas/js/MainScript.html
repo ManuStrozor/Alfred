@@ -377,6 +377,18 @@
     }
   }
 
+  /**
+   * Phase 3 — déclenche l'alerte serveur « Mammouth » à partir du mois courant.
+   * Remplace l'appel autrefois intégré à getAllData. Best-effort : fire-and-forget, échec silencieux.
+   */
+  function _notifyMammoth(forecast) {
+    const cur = (forecast?.months || []).find(m => m.isCurrent);
+    if (!cur) return;
+    google.script.run
+      .withFailureHandler(() => {})
+      .maybeAlertMammoth({ budget: cur.budget, budgetInit: cur.budgetInit });
+  }
+
   function _maybeShowGemini() {
     if (_geminiDone || $('splash')?.classList.contains('is-hidden')) return;
     const GK = 'alfred_gemini_cache';
@@ -451,6 +463,7 @@
     renderDonut(rules);
     evaluateExpense();
     applyForecast(forecast);
+    _notifyMammoth(forecast);
 
     if (shownAccounts) _cache.balances = shownAccounts;
     renderLinkedAccountCards(shownAccounts);
@@ -1665,6 +1678,11 @@
       return;
     }
     const restore = _spinBtn(btn);
+    // Soldes épargne calculés côté client (source de vérité pour Historique) ;
+    // null → le serveur retombe sur les soldes écrits dans Budgets (transitionnel).
+    const balances = _cache.cur && _cache.cur.lep != null
+      ? { lep: _cache.cur.lep, la: _cache.cur.la, csl: _cache.cur.csl }
+      : null;
     runner('Clôture', result => {
       restore();
       closeAll();
@@ -1674,7 +1692,7 @@
       loadBudgetRules();
       const diff = result.diff >= 0 ? `+${result.diff}` : `${result.diff}`;
       showToast(`✅ ${result.closedMonth} clôturé · solde ${diff} € · ${result.archivedCount} transaction(s) archivée(s)`);
-    }, restore).paydayWeb(salary);
+    }, restore).paydayWeb(salary, balances);
   });
 
   /* ── Splash screen ───────────────────────────────────────────── */

@@ -510,20 +510,23 @@ function _getClosingDates(bDate) {
  * Passe en paie depuis la Web App (sans dialogue UI) :
  * calcule l'écart salaire, clôture le mois, retourne le nouveau prévisionnel.
  * @param {number} salary  Montant du salaire reçu
+ * @param {{lep:number, la:number, csl:number}} [balances]  Soldes épargne calculés côté client
+ *        (inscrits dans Historique). Fallback transitionnel sur les soldes écrits dans Budgets si absent.
  * @returns {{ closedMonth: string, archivedCount: number, diff: number, forecast: object }}
  */
-function paydayWeb(salary) {
+function paydayWeb(salary, balances) {
   const bDate = BUD_DATE.getValue();
   if (!(bDate instanceof Date)) throw new Error('Date invalide en A3.');
 
   const { closingMonth, closingYear, closingStr, nextDate } = _getClosingDates(bDate);
 
-  const { forecasted, toArchive, transTotal, lepBal, laBal, cslBal, prevsTotal } =
+  const { forecasted, toArchive, transTotal, prevsTotal } =
     _collectClosingInfo(closingYear, closingMonth);
+  const { lep, la, csl } = _closingBalances(balances);
   const diff  = roundCent(salary - forecasted);
   const solde = roundCent(prevsTotal + transTotal + diff);
 
-  _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lepBal, laBal, cslBal);
+  _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lep, la, csl);
   handleReminders();
 
   return { closedMonth: closingStr, archivedCount: toArchive.length, diff: solde, forecast: getFullForecast() };
@@ -531,10 +534,10 @@ function paydayWeb(salary) {
 
 /**
  * Collecte les données du mois à clôturer sans modifier le classeur.
+ * Les soldes épargne (Historique) ne sont plus lus ici : ils proviennent du client via paydayWeb.
  * @param {number} closingYear   Année du mois à clôturer
  * @param {number} closingMonth  Mois 0-indexé du mois à clôturer
- * @returns {{ forecasted: number, toArchive: object[], transTotal: number,
- *             lepBal: number, laBal: number, cslBal: number }}
+ * @returns {{ forecasted: number, toArchive: object[], transTotal: number, prevsTotal: number }}
  */
 function _collectClosingInfo(closingYear, closingMonth) {
 
@@ -560,8 +563,6 @@ function _collectClosingInfo(closingYear, closingMonth) {
     }
   }
 
-  const [lepBal, laBal, cslBal] = BUD_TAB.getRange(ROW_BALANCE, COOR.lep.col, 1, 3).getValues()[0];
-
   // Somme de toutes les prévisions actives pour le mois de clôture
   let prevsTotal = 0;
   for (let i = 1; i < preValues.length; i++) {
@@ -571,7 +572,21 @@ function _collectClosingInfo(closingYear, closingMonth) {
     prevsTotal += Number(p[3]);
   }
 
-  return { forecasted, toArchive, transTotal, lepBal, laBal, cslBal, prevsTotal };
+  return { forecasted, toArchive, transTotal, prevsTotal };
+}
+
+/**
+ * Soldes épargne au moment de la clôture (inscrits dans Historique).
+ * Source de vérité : valeurs calculées côté client, transmises par paydayWeb.
+ * Fallback transitionnel sur les soldes écrits dans Budgets si absents (retiré en Phase 4).
+ * @param {{lep:number, la:number, csl:number}} [balances]
+ */
+function _closingBalances(balances) {
+  if (balances && typeof balances.lep === 'number') {
+    return { lep: balances.lep, la: balances.la, csl: balances.csl };
+  }
+  const [lep, la, csl] = BUD_TAB.getRange(ROW_BALANCE, COOR.lep.col, 1, 3).getValues()[0];
+  return { lep, la, csl };
 }
 
 function _ensureSheetWithHeader(name, header) {
@@ -1782,8 +1797,6 @@ function getAllData() {
   const shownAccounts = _getAccountBalances(allAccounts.filter(({ uid }) => shownUids.includes(uid)));
   const forecast      = getCached('forecast', _getFullForecast);
 
-  _maybeAlertMammoth(forecast?.months?.find(m => m.isCurrent), up);
-
   return {
     forecast,
     forecastInputs:      _forecastInputs(), // Phase 0 — données pour le calcul client (pas encore consommé)
@@ -1804,10 +1817,20 @@ const MAMMOTH_DEFAULT_MSG =
   'côté finances. Si tu as un moment pour prendre des nouvelles, ça me ferait plaisir. 🙏';
 
 /**
+ * Web app : déclenche l'alerte « Mammouth » à partir du mois courant calculé côté client.
+ * Appelée en best-effort (fire-and-forget) à chaque chargement ; l'envoi de l'email et le
+ * ré-armement du flag restent serveur. Remplace l'ancien appel intégré à getAllData.
+ * @param {{budget:number, budgetInit:number}} cur  mois courant (forecast client)
+ */
+function maybeAlertMammoth(cur) {
+  _maybeAlertMammoth(cur, USER_PROPS.getProperties());
+}
+
+/**
  * « Le Mammouth » : prévient par email un proche lorsque la situation budgétaire
  * du mois courant devient difficile (météo Orage ou pire). Une seule alerte par
  * épisode : ré-armée dès que la situation repasse au-dessus du seuil.
- * Appelée dans getAllData ; n'échoue jamais (try/catch) pour ne pas casser le chargement.
+ * Appelée via l'endpoint maybeAlertMammoth() ; n'échoue jamais (try/catch).
  * @param {object|undefined} cur  mois courant du forecast ({ budget, budgetInit, ... })
  * @param {object} up             USER_PROPS.getProperties() (réutilisé, pas de relecture)
  */
