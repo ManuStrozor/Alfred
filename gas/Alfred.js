@@ -739,7 +739,6 @@ function _getFullForecast() {
   const dataMap    = new Map();
 
   getForecast();
-
   // 1. Mois courant (ROW_BALANCE, cols B–E + G2/I3 pour budgetInit = b_in + b_out + d_in)
   const balRow   = BUD_TAB.getRange(ROW_BALANCE, COOR.rev.col, 1, 4).getValues()[0];
   const initVals = BUD_TAB.getRange('G2:I3').getValues(); // [[G2=b_in, H2, I2=d_in], [G3, H3=b_out, I3]]
