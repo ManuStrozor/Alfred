@@ -10,7 +10,7 @@ Toujours « Alfred » dans le code/messages. Répondre en **français**.
 |---|---|
 | Backend | `gas/Alfred.js` — GAS Web App (`executeAs: USER_ACCESSING`, `access: ANYONE`) |
 | Frontend | `gas/**/*.html` — HtmlService SPA en iframe sandbox |
-| Tests | Jest `__tests__/` — backend (`gas-env.js`) + client (`client-env.js`), via `vm.runInContext` |
+| Tests | Backend : Jest `__tests__/` (`gas-env.js`, `vm.runInContext`). Client : e2e Playwright (`e2e/`) — pas de tests unitaires DOM |
 | CI/Deploy | `clasp` + GitHub Actions (`test.yml` réutilisable + `deploy.yml`), e2e Playwright, secret `CLASPRC_JSON` |
 
 ## Structure (`gas/` = rootDir clasp)
@@ -77,7 +77,8 @@ Cache localStorage `alfred_gemini_cache` `{key, message, ts}`. Clé = `"MM/YYYY|
 ## Tests
 
 - `gas-env.js` : charge `Alfred.js` (`vm.runInContext`, stubs GAS). Expose les `function`, pas les `const`.
-- `client-env.js` : charge `js/MainScript`, stubs DOM, helpers via épilogue.
+- Pas de tests unitaires DOM client : le client est couvert par les e2e Playwright (`e2e/tests/*.spec.js`, harnais `e2e/build-harness.mjs` + mock `e2e/mock-gas.js` + fixtures `e2e/fixtures/`). Un module client de **math pure** peut toutefois être testé en Jest via `vm` (ex. `forecastClient.test.js` charge `gas/js/Forecast.html`).
+- `npm run check:client` (`scripts/check-client.mjs`) : garde-fou statique des `.html` client (`//` en chaîne, quotes échappées, caractères invisibles, syntaxe).
 - `vm.runInContext` non instrumenté → `test:cov` ne couvre que les helpers, pas `Alfred.js`. Coverage manuelle/fonctionnelle.
 
 ## Règles absolues
