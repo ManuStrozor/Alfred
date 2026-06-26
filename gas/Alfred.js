@@ -4,7 +4,6 @@
 const PROPS      = PropertiesService.getScriptProperties();
 const USER_PROPS = PropertiesService.getUserProperties();
 
-// ----- Onglets --------------------------------------------------------------------------------------------------------------------
 // Multi-user : chaque utilisateur peut enregistrer son propre classeur via setSheetId().
 // Si aucun ID enregistré, on utilise le classeur container (compte propriétaire du script).
 
