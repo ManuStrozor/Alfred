@@ -875,13 +875,6 @@ function _listFromValidation(tab, col) {
   return [];
 }
 
-/** Catégories de transaction (validation col E). Les règles sont fixes côté client (const RULES). */
-function getTransOptions() {
-  return {
-    categories: _listFromValidation(TRA_TAB, 5), // col E
-  };
-}
-
 /**
  * Ajoute une transaction dans l'onglet Trans, puis recalcule.
  * @param {number} amount    Montant (positif = crédit, négatif = débit)
@@ -1510,7 +1503,6 @@ function getAllData() {
   return {
     forecastInputs:      _forecastInputs(),       // calcul du forecast côté client (AlfredForecast)
     monthTransactions:   _getMonthTransactions(), // transactions du mois courant (formatage serveur)
-    options:             getTransOptions(),
     savingsProps:        getSavingsProps(undefined, up),
     shownAccounts,
     tasks:               getRevolutTasks(),

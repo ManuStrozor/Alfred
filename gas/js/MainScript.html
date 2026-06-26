@@ -57,6 +57,21 @@
   // Ordre de saisie. Cohérent avec les pills du modal PrevLine et RULE_ORDER/RULE_COLORS.
   const RULES = ['Besoins', 'Envies', 'Epargne', 'Dette'];
 
+  // Catégories de dépense (fixes), groupées par thème → optgroups du select transaction.
+  // ⚠ Orientées DÉPENSES uniquement : les revenus restent sans catégorie (comptés dans d_in du donut).
+  const CATEGORIES = {
+    'Logement':        ['Loyer', 'Crédit immo', 'Charges', 'Électricité & Gaz', 'Eau',
+                        'Internet & Mobile', 'Assurance habitation', 'Entretien & Travaux'],
+    'Alimentation':    ['Courses', 'Restaurant', 'Bar & Café', 'Livraison'],
+    'Transport':       ['Carburant', 'Transports en commun', 'Billets train/avion',
+                        'Péage & Parking', 'Entretien auto', 'Assurance auto'],
+    'Santé':           ['Médecin', 'Pharmacie', 'Mutuelle', 'Optique & Dentaire'],
+    'Loisirs':         ['Sorties', 'Sport', 'Voyages', 'Abonnements', 'Culture', 'Hobbies'],
+    'Achats':          ['Vêtements', 'High-tech', 'Maison & Déco', 'Cadeaux'],
+    'Vie quotidienne': ['Beauté & Coiffeur', 'Animaux', 'Éducation', 'Enfants', 'Dons'],
+    'Finances':        ['Épargne', 'Remboursement crédit', 'Impôts & Taxes', 'Frais bancaires'],
+  };
+
   const MOIS = [
     'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
     'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'
@@ -455,13 +470,26 @@
     list.querySelectorAll('.month-trans-item:not([data-archived])').forEach(makeSwipeable);
   }
 
+  /** Remplit les selects règle / catégorie du formulaire transaction (listes fixes : RULES, CATEGORIES). */
+  function _populateTransSelects() {
+    const ruleSel = $('tx-rule');
+    ruleSel.innerHTML = '<option value="">—</option>';
+    RULES.forEach(r => ruleSel.appendChild(new Option(r, r)));
+
+    const catSel = $('tx-category');
+    catSel.innerHTML = '<option value="">—</option>';
+    for (const [theme, cats] of Object.entries(CATEGORIES)) {
+      const og = document.createElement('optgroup');
+      og.label = theme;
+      cats.forEach(c => og.appendChild(new Option(c, c)));
+      catSel.appendChild(og);
+    }
+  }
+
   /** Applique toutes les données initiales : forecast (calculé client), donut, selects, tasks, prevs. */
-  function _applyAllData({ forecastInputs, monthTransactions, options, savingsProps, shownAccounts, tasks, prevs }) {
+  function _applyAllData({ forecastInputs, monthTransactions, savingsProps, shownAccounts, tasks, prevs }) {
     if (savingsProps) _cache.props = savingsProps;
-    $('tx-rule').innerHTML = '<option value="">—</option>';
-    $('tx-category').innerHTML = '<option value="">—</option>';
-    RULES.forEach(r => $('tx-rule').appendChild(new Option(r, r)));
-    options.categories.forEach(c => $('tx-category').appendChild(new Option(c, c)));
+    _populateTransSelects();
     evaluateExpense();
 
     // Les lignes de charges doivent être en place AVANT les calculs client (forecast + donut).
