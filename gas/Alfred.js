@@ -875,9 +875,9 @@ function _listFromValidation(tab, col) {
   return [];
 }
 
+/** Catégories de transaction (validation col E). Les règles sont fixes côté client (const RULES). */
 function getTransOptions() {
   return {
-    rules:      _listFromValidation(TRA_TAB, 4), // col D
     categories: _listFromValidation(TRA_TAB, 5), // col E
   };
 }

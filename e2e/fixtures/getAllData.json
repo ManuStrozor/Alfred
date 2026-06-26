@@ -25,7 +25,6 @@
     { "row": 7, "date": "15/06", "label": "Credit",  "amount": -100, "rule": "Dette",   "category": "Pret" }
   ],
   "options": {
-    "rules": ["Besoins", "Envies", "Epargne", "Dette"],
     "categories": ["Loyer", "Courses", "Loisirs", "Transport"]
   },
   "savingsProps": { "lep": 8000, "la": 20000, "csl": 0 },

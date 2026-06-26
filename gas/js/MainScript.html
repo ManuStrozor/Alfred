@@ -53,6 +53,10 @@
   // Ordre d'affichage (donut + légende) : Dette juste après Besoins (toutes deux subies).
   const RULE_ORDER = ['Besoins', 'Dette', 'Envies', 'Epargne'];
 
+  // Règles budgétaires (fixes) — source unique côté client pour le select transaction et le donut.
+  // Ordre de saisie. Cohérent avec les pills du modal PrevLine et RULE_ORDER/RULE_COLORS.
+  const RULES = ['Besoins', 'Envies', 'Epargne', 'Dette'];
+
   const MOIS = [
     'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
     'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'
@@ -456,9 +460,8 @@
     if (savingsProps) _cache.props = savingsProps;
     $('tx-rule').innerHTML = '<option value="">—</option>';
     $('tx-category').innerHTML = '<option value="">—</option>';
-    options.rules.forEach(r => $('tx-rule').appendChild(new Option(r, r)));
+    RULES.forEach(r => $('tx-rule').appendChild(new Option(r, r)));
     options.categories.forEach(c => $('tx-category').appendChild(new Option(c, c)));
-    _cache.ruleLabels = options.rules;
     evaluateExpense();
 
     // Les lignes de charges doivent être en place AVANT les calculs client (forecast + donut).
@@ -691,7 +694,7 @@
       prevLines:         _charges.lines || [],
       monthTransactions: _trans.items || [],
       currentAbs:        _curAbs(),
-      ruleLabels:        _cache.ruleLabels || [],
+      ruleLabels:        RULES,
     });
   }
 
