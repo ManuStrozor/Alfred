@@ -22,47 +22,6 @@ describe('toAbsMonth', () => {
     expect(g.toAbsMonth(2024, 6) % 12).toBe(6));
 });
 
-// ─── clampStart ───────────────────────────────────────────────────────────────
-
-describe('clampStart', () => {
-  test('null → startAbs (pas de borne de début)', () =>
-    expect(g.clampStart(null, 100, 200)).toBe(100));
-
-  test('avant la fenêtre → ramené à startAbs', () =>
-    expect(g.clampStart(50, 100, 200)).toBe(100));
-
-  test('dans la fenêtre → valeur inchangée', () =>
-    expect(g.clampStart(150, 100, 200)).toBe(150));
-
-  test('égal à startAbs → startAbs', () =>
-    expect(g.clampStart(100, 100, 200)).toBe(100));
-
-  test('égal à endAbs → endAbs', () =>
-    expect(g.clampStart(200, 100, 200)).toBe(200));
-
-  test('après la fenêtre → null (aucun chevauchement)', () =>
-    expect(g.clampStart(250, 100, 200)).toBeNull());
-});
-
-// ─── clampEnd ─────────────────────────────────────────────────────────────────
-
-describe('clampEnd', () => {
-  test('null → endAbs (pas de borne de fin)', () =>
-    expect(g.clampEnd(null, 100, 200)).toBe(200));
-
-  test('après la fenêtre → ramené à endAbs', () =>
-    expect(g.clampEnd(250, 100, 200)).toBe(200));
-
-  test('dans la fenêtre → valeur inchangée', () =>
-    expect(g.clampEnd(150, 100, 200)).toBe(150));
-
-  test('égal à startAbs → startAbs', () =>
-    expect(g.clampEnd(100, 100, 200)).toBe(100));
-
-  test('avant la fenêtre → null (aucun chevauchement)', () =>
-    expect(g.clampEnd(50, 100, 200)).toBeNull());
-});
-
 // ─── getPeriod ────────────────────────────────────────────────────────────────
 
 describe('getPeriod', () => {
@@ -83,27 +42,6 @@ describe('getPeriod', () => {
 
   test('texte non numérique → erreur', () =>
     expect(() => g.getPeriod('abc')).toThrow());
-});
-
-// ─── getMonthsText ────────────────────────────────────────────────────────────
-
-describe('getMonthsText', () => {
-  const start = new Date(2025, 0, 1); // 1er janvier 2025
-
-  test('longueur = period', () =>
-    expect(g.getMonthsText(start, 3)).toHaveLength(3));
-
-  test('chaque entrée est un tableau à un élément', () =>
-    expect(g.getMonthsText(start, 2)[0]).toHaveLength(1));
-
-  test('premier mois = mois suivant la date de départ', () =>
-    expect(g.getMonthsText(start, 3)[0][0]).toEqual(new Date(2025, 1, 1)));
-
-  test('mois consécutifs', () => {
-    const months = g.getMonthsText(start, 3);
-    expect(months[1][0]).toEqual(new Date(2025, 2, 1));
-    expect(months[2][0]).toEqual(new Date(2025, 3, 1));
-  });
 });
 
 // ─── absMonthToText ───────────────────────────────────────────────────────────

@@ -1,25 +1,4 @@
 {
-  "forecast": {
-    "months": [
-      {
-        "month": "06/2026",
-        "isCurrent": true,
-        "isForecast": false,
-        "budget": 740,
-        "budgetInit": 1500,
-        "lep": 8000,
-        "la": 20000,
-        "csl": 0
-      }
-    ],
-    "periodText": "12 mois",
-    "monthTransactions": [
-      { "row": 2, "date": "05/06", "label": "Loyer",   "amount": -650, "rule": "Besoins", "category": "Loyer" },
-      { "row": 3, "date": "08/06", "label": "Courses", "amount": -110, "rule": "Besoins", "category": "Courses" },
-      { "row": 4, "date": "10/06", "label": "Resto",   "amount":  -45, "rule": "Envies",  "category": "Loisirs" }
-    ],
-    "cslName": "CSL"
-  },
   "forecastInputs": {
     "currentAbs": 24317,
     "period": 0,
@@ -37,6 +16,11 @@
       "CSL": { "initialAbs": 24317, "sums": { "24317": 0 } }
     }
   },
+  "monthTransactions": [
+    { "row": 2, "date": "05/06", "label": "Loyer",   "amount": -650, "rule": "Besoins", "category": "Loyer" },
+    { "row": 3, "date": "08/06", "label": "Courses", "amount": -110, "rule": "Besoins", "category": "Courses" },
+    { "row": 4, "date": "10/06", "label": "Resto",   "amount":  -45, "rule": "Envies",  "category": "Loisirs" }
+  ],
   "rules": [
     { "label": "Besoins", "amount": 760 },
     { "label": "Envies",  "amount": 300 },

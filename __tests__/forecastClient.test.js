@@ -1,19 +1,17 @@
 'use strict';
 
 /**
- * Parité de la math forecast portée côté client (gas/js/Forecast.html)
- * vs les fonctions backend de gas/Alfred.js, sur des fixtures partagées.
+ * Test GOLDEN du calcul forecast client (gas/js/Forecast.html — AlfredForecast).
  *
- * Le module client est chargé dans un contexte vm isolé (script HTML dépouillé de
- * ses balises <script>), comme gas-env le fait pour Alfred.js. On ne teste donc que
- * de la math pure — aucun DOM. Tant que le calcul serveur existe (phase parallèle-vérif),
- * ce test garantit que les deux implémentations produisent EXACTEMENT le même forecast.
+ * Depuis la Phase 4, la math n'existe plus côté serveur : ce test fige les sorties attendues
+ * (capturées de l'implémentation serveur d'origine, qui faisait foi) et garantit que le port
+ * client continue de les produire au centime près. Fixtures exerçant les chemins clés :
+ * bornes Prevs, filtre months, transferts épargne, capitalisation janvier, dépassement plafond.
  */
 
 const vm   = require('vm');
 const fs   = require('fs');
 const path = require('path');
-const { loadAlfred, ACCOUNTS } = require('./helpers/gas-env');
 
 /** Charge gas/js/Forecast.html dans un vm et retourne window.AlfredForecast. */
 function loadForecastClient() {
@@ -25,108 +23,61 @@ function loadForecastClient() {
   return ctx.AlfredForecast;
 }
 
-const g  = loadAlfred();
 const FC = loadForecastClient();
 
-// ── Fixtures partagées ─────────────────────────────────────────────────────
-const currentAbs = g.toAbsMonth(2025, 10); // Nov 2025 = 24310
-const period     = 5;                       // 6 mois (Nov→Avr), traverse janvier (capitalisation)
-
-// Lignes Prevs (source unique → dérive la forme sheet A–E et la forme getPrevLines()).
-const prevDefs = [
+// ── Entrées (forecastInputs + lignes Prevs) ─────────────────────────────────
+// currentAbs = nov. 2025 (2025*12+10) ; période 5 → 6 mois, traverse janvier (capitalisation).
+const INPUTS = {
+  currentAbs: 24310,
+  period: 5,
+  budgetInit: 1234.56,
+  cslName: 'CSL',
+  accounts: [
+    { id: 'LEP', rate: 0.025, ceiling: 10000 },
+    { id: 'LA',  rate: 0.015, ceiling: 22950 },
+    { id: 'CSL', rate: 0,     ceiling: null  },
+  ],
+  tranSums: { 24310: -200.5, 24311: -200, 24312: 50.25 },
+  epargne: {
+    LEP: { initialAbs: 24310, sums: { 24310: 9500, 24311: 100 } },
+    LA:  { initialAbs: 24310, sums: { 24310: 5000 } },
+    CSL: { initialAbs: 24310, sums: { 24310: 1000 } },
+  },
+};
+const PREVS = [
   { row: 2, start: '',        end: '', months: '',  amount: -800, type: ''    }, // loyer mensuel
-  { row: 3, start: '',        end: '', months: '',  amount: -300, type: 'LEP' }, // virement LEP (entrée épargne)
-  { row: 4, start: '',        end: '', months: '6', amount:  200, type: ''    }, // prime juin uniquement
+  { row: 3, start: '',        end: '', months: '',  amount: -300, type: 'LEP' }, // virement LEP
+  { row: 4, start: '',        end: '', months: '6', amount:  200, type: ''    }, // prime juin
   { row: 5, start: '12/2025', end: '', months: '',  amount: -150, type: 'LA'  }, // virement LA dès déc.
 ];
-const preValues  = [['A', 'B', 'C', 'D', 'E'], ...prevDefs.map(d => [d.start, d.end, d.months, d.amount, d.type])];
-const prevLines  = prevDefs.map(d => ({ ...d, label: '', rule: '' }));
 
-const traRows = [
-  ['Date', 'Montant'],
-  [new Date(2025, 10, 5),  -120.50], // Nov
-  [new Date(2025, 10, 20),  -80],    // Nov
-  [new Date(2025, 11, 3),  -200],    // Déc
-  [new Date(2026, 0, 15),    50.25], // Jan
+// ── Sorties figées (golden) ─────────────────────────────────────────────────
+const GOLDEN_MONTHS = [
+  { budget: -1300.5,  lep: 9800,     la: 5000,    csl: 1000 },
+  { budget: -1450,    lep: 10200,    la: 5150,    csl: 1000 },
+  { budget: -1199.75, lep: 10563.54, la: 5319.31, csl: 1000 },
+  { budget: -1250,    lep: 10863.54, la: 5469.31, csl: 1000 },
+  { budget: -1250,    lep: 11163.54, la: 5619.31, csl: 1000 },
+  { budget: -1250,    lep: 11463.54, la: 5769.31, csl: 1000 },
+];
+const GOLDEN_ALERTS = [
+  { title: 'Plafond LEP dépassé', message: 'LEP dépasse 10000 € en 12/2025 (+200 €) — corriger ligne 3 (Prevs) → -100 €.' },
 ];
 
-const epaRows = [
-  ['Date', 'Montant', 'Compte'],
-  [new Date(2025, 10, 1), 9500, 'LEP'], // solde initial LEP (proche du plafond 10 000)
-  [new Date(2025, 10, 1), 5000, 'LA'],
-  [new Date(2025, 10, 1), 1000, 'CSL'],
-  [new Date(2025, 11, 10), 100, 'LEP'], // dépôt direct LEP en déc.
-];
+describe('AlfredForecast.compute — golden', () => {
+  const out = FC.compute(INPUTS, { lines: PREVS });
 
-const SA = [ACCOUNTS.LEP, ACCOUNTS.LA, ACCOUNTS.CSL];
-
-// ── Pipeline backend (réplique getForecast + arrondi de _getFullForecast) ───
-function backend() {
-  const tranMap = g.indexTran(traRows, 'Trans');
-  const epaMaps = g.indexEpargne(epaRows);
-  const accData = SA.map(acc => {
-    const map = epaMaps[acc.id];
-    return { acc, map, initialAbs: map.keys().next().value };
-  });
-  const min = Math.min(...accData.map(a => a.initialAbs), currentAbs);
-  const max = Math.max(period, period + 1 + currentAbs - min);
-  const prevMap    = g.indexPrev(preValues, min, max);
-  const revOutput  = g.budgetCalc(prevMap, tranMap, currentAbs, period + 1);
-  const accOutputs = accData.map(a => g.epargneCalc(prevMap, a.map, currentAbs, a.initialAbs, period + 1, a.acc));
-
-  const months = [];
-  for (let i = 0; i <= period; i++) {
-    months.push({
-      budget: g.roundCent(revOutput[i][0]),
-      lep:    g.roundCent(accOutputs[0][i][0]),
-      la:     g.roundCent(accOutputs[1][i][0]),
-      csl:    g.roundCent(accOutputs[2][i][0]),
-    });
-  }
-
-  g._mock.toastCalls.length = 0;
-  accData.forEach((a, k) => g.checkCeiling(accOutputs[k], currentAbs, a.acc, prevMap, preValues));
-  const alerts = g._mock.toastCalls.map(t => ({ title: t.title, message: t.msg }));
-
-  return { months, alerts };
-}
-
-// ── forecastInputs (ce que getAllData enverrait au client pour ces fixtures) ─
-function forecastInputs() {
-  const epaMaps = g.indexEpargne(epaRows);
-  const epargne = {};
-  for (const acc of SA) {
-    const map = epaMaps[acc.id];
-    epargne[acc.id] = { initialAbs: map.size ? map.keys().next().value : null, sums: g._sumMonthMap(map) };
-  }
-  return {
-    currentAbs,
-    period,
-    budgetInit: 1234.56,
-    cslName:    'CSL',
-    accounts:   SA.map(a => ({ id: a.id, rate: a.rate, ceiling: a.ceiling })),
-    tranSums:   g._sumMonthMap(g.indexTran(traRows, 'Trans')),
-    epargne,
-  };
-}
-
-describe('Forecast client — parité avec le backend', () => {
-  const exp = backend();
-  const out = FC.compute(forecastInputs(), { lines: prevLines });
-
-  test('soldes budget/lep/la/csl identiques mois par mois', () => {
+  test('soldes budget/lep/la/csl conformes au golden', () => {
     const got = out.months.map(m => ({ budget: m.budget, lep: m.lep, la: m.la, csl: m.csl }));
-    expect(got).toEqual(exp.months);
+    expect(got).toEqual(GOLDEN_MONTHS);
   });
 
-  test('alertes plafond identiques aux toasts serveur', () => {
-    // Les fixtures font dépasser le plafond LEP (10 000 €) → au moins une alerte attendue.
-    expect(exp.alerts.length).toBeGreaterThan(0);
-    expect(out.ceilingAlerts).toEqual(exp.alerts);
+  test('alertes plafond conformes au golden', () => {
+    expect(out.ceilingAlerts).toEqual(GOLDEN_ALERTS);
   });
 
-  test('métadonnées : mois courant marqué, budgetInit transmis, période ' + (period) + ' mois', () => {
-    expect(out.months).toHaveLength(period + 1);
+  test('métadonnées : mois courant marqué, budgetInit, période', () => {
+    expect(out.months).toHaveLength(6);
     expect(out.months[0].isCurrent).toBe(true);
     expect(out.months[0].budgetInit).toBe(1234.56);
     expect(out.months[0].month).toBe('11/2025');
@@ -136,7 +87,7 @@ describe('Forecast client — parité avec le backend', () => {
   });
 });
 
-describe('Forecast client — periodText', () => {
+describe('AlfredForecast.periodText', () => {
   test('multiples de 12 → années', () => {
     expect(FC.periodText(12)).toBe('1 an');
     expect(FC.periodText(24)).toBe('2 ans');

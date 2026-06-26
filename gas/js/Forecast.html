@@ -1,20 +1,19 @@
 <script>
 /*
- * Alfred — Calcul du forecast côté client (Phase 1 de la refonte « calcul client »).
+ * Alfred — Calcul du forecast côté client (source de vérité UNIQUE depuis la refonte « calcul client »).
  *
- * Port FIDÈLE de la math de gas/Alfred.js (indexPrev / budgetCalc / epargneCalc / checkCeiling
- * + helpers). Consomme le payload `forecastInputs` (montants bucketés par mois absolu côté
- * serveur → aucun reparsing de date ici, donc aucun écart de fuseau) et les lignes Prevs de
- * getPrevLines() (bornes MM/YYYY, sans objet Date).
+ * Le serveur ne calcule plus le forecast : il fournit `forecastInputs` (montants bucketés par mois
+ * absolu → aucun reparsing de date ici, donc aucun écart de fuseau) et les lignes Prevs de
+ * getPrevLines() (bornes MM/YYYY, sans objet Date) ; ce module fait tout le reste.
  *
- * compute() produit le même objet que _getFullForecast() côté serveur :
- *   { periodText, months, cslName } + ceilingAlerts (équivalent des toasts « plafond dépassé »).
+ * compute() produit l'objet forecast consommé par applyForecast() :
+ *   { periodText, months, cslName } + ceilingAlerts (alertes « plafond dépassé », affichées en toast).
  *
  * Exposé en un seul point d'accès `AlfredForecast` sur le global (window en navigateur,
  * contexte vm en test) — robuste au scope cross-<script> de HtmlService.
  *
- * ⚠ Parité : toute modif ici doit rester alignée sur Alfred.js tant que le calcul serveur
- *   existe (phase parallèle-vérif). Couvert par __tests__/forecastClient.test.js.
+ * ⚠ Couvert par le test GOLDEN __tests__/forecastClient.test.js (sorties figées). Toute modif de la
+ *   math doit y être répercutée intentionnellement.
  */
 (function (root) {
   'use strict';

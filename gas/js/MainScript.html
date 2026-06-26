@@ -347,38 +347,35 @@
   }
 
   /**
-   * Phase 2 (parallèle-vérif) — calcule le forecast côté client en tâche de fond et le compare
-   * au forecast serveur. Ne pilote PAS l'UI : le serveur reste la source de vérité tant que la
-   * parité n'est pas confirmée. Résultat exposé via window.__forecastParity + log console.
+   * Calcule le forecast côté client (AlfredForecast) à partir du payload serveur, et y rattache
+   * les transactions du mois courant (formatées serveur). Source de vérité unique de l'UI.
    */
-  function _verifyForecastParity(inputs, prevs, serverForecast) {
-    if (!inputs || !window.AlfredForecast || !serverForecast) {
-      window.__forecastParity = { skipped: true };
-      return;
+  function _computeForecast(forecastInputs, monthTransactions) {
+    if (!forecastInputs || !window.AlfredForecast) {
+      return { months: [], periodText: '', cslName: '', monthTransactions: monthTransactions || [], ceilingAlerts: [] };
     }
-    try {
-      const client = window.AlfredForecast.compute(inputs, prevs);
-      const sm = serverForecast.months || [];
-      const cm = client.months || [];
-      const diffs = [];
-      if (sm.length !== cm.length) diffs.push({ type: 'length', server: sm.length, client: cm.length });
-      const n = Math.min(sm.length, cm.length);
-      for (let i = 0; i < n; i++) {
-        ['budget', 'lep', 'la', 'csl'].forEach(k => {
-          if (sm[i][k] !== cm[i][k]) diffs.push({ month: sm[i].month, key: k, server: sm[i][k], client: cm[i][k] });
-        });
-      }
-      window.__forecastParity = { ok: diffs.length === 0, checked: n, diffs };
-      if (diffs.length) console.warn('[forecast-parity] écarts client/serveur', diffs);
-      else console.info('[forecast-parity] OK — ' + n + ' mois');
-    } catch (e) {
-      window.__forecastParity = { error: String((e && e.message) || e) };
-      console.warn('[forecast-parity] erreur calcul client', e);
-    }
+    const fc = window.AlfredForecast.compute(forecastInputs, { lines: _charges.lines });
+    fc.monthTransactions = monthTransactions || [];
+    return fc;
   }
 
   /**
-   * Phase 3 — déclenche l'alerte serveur « Mammouth » à partir du mois courant.
+   * Recalcule et applique le forecast après une édition. Met à jour les lignes de charges si
+   * fournies (édition de Prevs) ; affiche les alertes de plafond (sur édition uniquement).
+   */
+  function _refreshForecast(result, showCeiling) {
+    if (result && result.prevs) {
+      _charges.lines = result.prevs.lines;
+      _charges.types = result.prevs.types;
+    }
+    const fc = _computeForecast(result && result.forecastInputs, result && result.monthTransactions);
+    applyForecast(fc);
+    if (showCeiling) (fc.ceilingAlerts || []).forEach(a => showToast('⚠️ ' + a.message, 8000));
+    return fc;
+  }
+
+  /**
+   * Déclenche l'alerte serveur « Mammouth » à partir du mois courant.
    * Remplace l'appel autrefois intégré à getAllData. Best-effort : fire-and-forget, échec silencieux.
    */
   function _notifyMammoth(forecast) {
@@ -412,8 +409,9 @@
       } else _splashHideGemini();
     };
 
+    const cur = allMonths.find(m => m.isCurrent) || allMonths[0] || {};
     runner('Gemini', onSuccess, _splashHideGemini)
-      .getGeminiInsight(clientKey);
+      .getGeminiInsight(clientKey, { month: cur.month, budget: cur.budget, lep: cur.lep, la: cur.la });
   }
 
 
@@ -453,8 +451,8 @@
     list.querySelectorAll('.month-trans-item:not([data-archived])').forEach(makeSwipeable);
   }
 
-  /** Applique toutes les données initiales : forecast, donut, selects, tasks, prevs. */
-  function _applyAllData({ forecast, forecastInputs, rules, options, savingsProps, shownAccounts, tasks, prevs }) {
+  /** Applique toutes les données initiales : forecast (calculé client), donut, selects, tasks, prevs. */
+  function _applyAllData({ forecastInputs, monthTransactions, rules, options, savingsProps, shownAccounts, tasks, prevs }) {
     if (savingsProps) _cache.props = savingsProps;
     $('tx-rule').innerHTML = '<option value="">—</option>';
     $('tx-category').innerHTML = '<option value="">—</option>';
@@ -462,6 +460,11 @@
     options.categories.forEach(c => $('tx-category').appendChild(new Option(c, c)));
     renderDonut(rules);
     evaluateExpense();
+
+    // Les lignes de charges doivent être en place AVANT le calcul du forecast (indexPrev côté client).
+    if (prevs) { _charges.lines = prevs.lines; _charges.types = prevs.types; _charges.loaded = true; }
+
+    const forecast = _computeForecast(forecastInputs, monthTransactions);
     applyForecast(forecast);
     _notifyMammoth(forecast);
 
@@ -470,13 +473,9 @@
 
     if (tasks) renderTasks(tasks);
     if (prevs) {
-      _charges.lines = prevs.lines;
-      _charges.types = prevs.types;
-      _charges.loaded = true;
       if (!_charges.filters.month) _charges.filters.month = _absToMmYyyy(_curAbs());
       renderPrevList();
     }
-    _verifyForecastParity(forecastInputs, prevs, forecast);
     _ptrFinish();
   }
 
@@ -842,8 +841,8 @@
     row.addEventListener('pointerup', finish);
     row.addEventListener('pointercancel', _ => finish(null));
 
-    const onSuccess = forecast => {
-      applyForecast(forecast);
+    const onSuccess = result => {
+      _refreshForecast(result, true);
       loadBudgetRules();
       if (_modal.stack.includes('month-trans')) _renderMonthTrans();
       showToast('✅ Transaction supprimée');
@@ -1501,7 +1500,7 @@
     const editing = _trans.editingRow !== null;
     const btn = $('btn-add');
     const restore = _spinBtn(btn);
-    const onSuccess = data => {
+    const onSuccess = result => {
       restore();
       showToast('✅ Transaction ' + (editing ? 'modifiée' : 'ajoutée'));
       $('form-transaction').reset();
@@ -1509,7 +1508,7 @@
       if (editing) history.back();
       else closeAll();
       _trans.editingRow = null;
-      applyForecast(data);
+      _refreshForecast(result, true);
       if (_modal.stack.includes('month-trans')) _renderMonthTrans();
       loadBudgetRules();
     };
@@ -1688,7 +1687,7 @@
       closeAll();
       resetPaydayUI();
       $('salary-input').value = '';
-      applyForecast(result.forecast);
+      _refreshForecast(result, true);
       loadBudgetRules();
       const diff = result.diff >= 0 ? `+${result.diff}` : `${result.diff}`;
       showToast(`✅ ${result.closedMonth} clôturé · solde ${diff} € · ${result.archivedCount} transaction(s) archivée(s)`);
@@ -1994,9 +1993,9 @@
 
     const btn = $('btn-save-prev');
     const restore = _spinBtn(btn);
-    const onSuccess = forecast => {
+    const onSuccess = result => {
       restore();
-      applyForecast(forecast);
+      _refreshForecast(result, true);
       loadPrevLines();
       history.back();
       showToast(_charges.editingRow ? '✅ Charge modifiée' : '✅ Charge ajoutée');
@@ -2011,8 +2010,8 @@
 
   function _deletePrevLine(rowIndex, el) {
     el.style.opacity = '.4';
-    runner('Suppression', forecast => {
-      applyForecast(forecast);
+    runner('Suppression', result => {
+      _refreshForecast(result, true);
       loadPrevLines();
       showToast('✅ Charge supprimée');
     }, _ => { el.style.opacity = ''; }).deletePrevLine(rowIndex);
