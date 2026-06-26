@@ -860,21 +860,6 @@ function editTransactionByRow(rowIndex, amount, date, label, rule, category) {
 }
 
 
-/**
- * Retourne la répartition du budget par règle pour le mois courant.
- * Lit Budgets F4:H8 — F : libellé, G : % décimal consommé, H : montant € (= G × total revenus).
- * @returns {{ label: string, pct: number, amount: number }[]}
- */
-function getBudgetRules() {
-  return getCached('budget_rules', () =>
-    BUD_TAB.getRange('F4:H8').getValues().map(r => ({
-      label:  String(r[0]).trim(),
-      pct:    typeof r[1] === 'number' ? Math.round(r[1] * 1000) / 10 : 0,
-      amount: typeof r[2] === 'number' ? roundCent(r[2]) : 0,
-    }))
-  );
-}
-
 /** Lit les valeurs autorisées d'une colonne via sa validation de données. */
 function _listFromValidation(tab, col) {
   const validation = tab.getRange(2, col).getDataValidation();
@@ -1525,7 +1510,6 @@ function getAllData() {
   return {
     forecastInputs:      _forecastInputs(),       // calcul du forecast côté client (AlfredForecast)
     monthTransactions:   _getMonthTransactions(), // transactions du mois courant (formatage serveur)
-    rules:               getBudgetRules(),
     options:             getTransOptions(),
     savingsProps:        getSavingsProps(undefined, up),
     shownAccounts,

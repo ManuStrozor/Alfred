@@ -452,21 +452,22 @@
   }
 
   /** Applique toutes les données initiales : forecast (calculé client), donut, selects, tasks, prevs. */
-  function _applyAllData({ forecastInputs, monthTransactions, rules, options, savingsProps, shownAccounts, tasks, prevs }) {
+  function _applyAllData({ forecastInputs, monthTransactions, options, savingsProps, shownAccounts, tasks, prevs }) {
     if (savingsProps) _cache.props = savingsProps;
     $('tx-rule').innerHTML = '<option value="">—</option>';
     $('tx-category').innerHTML = '<option value="">—</option>';
     options.rules.forEach(r => $('tx-rule').appendChild(new Option(r, r)));
     options.categories.forEach(c => $('tx-category').appendChild(new Option(c, c)));
-    renderDonut(rules);
+    _cache.ruleLabels = options.rules;
     evaluateExpense();
 
-    // Les lignes de charges doivent être en place AVANT le calcul du forecast (indexPrev côté client).
+    // Les lignes de charges doivent être en place AVANT les calculs client (forecast + donut).
     if (prevs) { _charges.lines = prevs.lines; _charges.types = prevs.types; _charges.loaded = true; }
 
     const forecast = _computeForecast(forecastInputs, monthTransactions);
     applyForecast(forecast);
     _notifyMammoth(forecast);
+    renderDonut(_computeRules()); // répartition calculée client (après applyForecast → _trans.items prêtes)
 
     if (shownAccounts) _cache.balances = shownAccounts;
     renderLinkedAccountCards(shownAccounts);
@@ -684,11 +685,19 @@
     _setSkeleton('donut-legend');
   }
 
+  /** Données de répartition par règle pour le donut — calcul client (prevs + transactions du mois). */
+  function _computeRules() {
+    return window.AlfredForecast.computeBudgetRules({
+      prevLines:         _charges.lines || [],
+      monthTransactions: _trans.items || [],
+      currentAbs:        _curAbs(),
+      ruleLabels:        _cache.ruleLabels || [],
+    });
+  }
+
+  /** Recalcule et affiche la répartition du donut (côté client, sans appel serveur). */
   function loadBudgetRules() {
-    _resetDonut();
-    runner('Budget-rules', renderDonut, _ => {
-      $('donut-legend').innerHTML = '<div class="empty-state" style="padding:12px 0;font-size:.82rem;">—</div>';
-    }).getBudgetRules();
+    renderDonut(_computeRules());
   }
 
   /* ══ Tâches Revolut ════════════════════════════════════════════════

@@ -223,9 +223,60 @@
     return { periodText: periodText(period), months, cslName, ceilingAlerts };
   }
 
+  /**
+   * Répartition du budget par règle (donut) — port de l'ancien getBudgetRules (formules Budgets!F4:H8).
+   * Pour chaque règle (hors Reste) :
+   *   pourcentage = -(Σ charges actives + Σ transactions du mois, filtrées sur la règle) / (b_in + d_in)
+   *   montant     = pourcentage × (b_in + d_in)
+   * où  b_in = Σ montants > 0 des charges actives au mois courant
+   *     d_in = Σ montants > 0 des transactions (mois courant) sans catégorie
+   * Reste : pourcentage = 1 − Σ(autres pourcentages) ; montant = pourcentage × (b_in + d_in).
+   * (b_in + d_in) = 0 → division impossible → tout à 0 (comme la formule sheet en erreur).
+   *
+   * @param {{ prevLines:Array, monthTransactions:Array, currentAbs:number, ruleLabels:string[] }} o
+   * @returns {{ label:string, pct:number, amount:number }[]}  pct en %, 1 décimale ; montant au centime.
+   */
+  function computeBudgetRules(o) {
+    const prevLines = o.prevLines || [];
+    const trans     = o.monthTransactions || [];
+    const labels    = o.ruleLabels || [];
+
+    let bIn = 0;
+    const chargeByRule = {};
+    for (const line of prevLines) {
+      if (!prevLineApplies(parsePrevBounds(line.start, line.end, line.months), o.currentAbs)) continue;
+      if (line.amount > 0) bIn += line.amount;
+      if (line.rule) chargeByRule[line.rule] = (chargeByRule[line.rule] || 0) + line.amount;
+    }
+
+    let dIn = 0;
+    const transByRule = {};
+    for (const t of trans) {
+      if (t.amount > 0 && !t.category) dIn += t.amount;
+      if (t.rule) transByRule[t.rule] = (transByRule[t.rule] || 0) + t.amount;
+    }
+
+    const revenus = bIn + dIn;
+    if (revenus === 0) {
+      return [...labels, 'Reste'].map(label => ({ label, pct: 0, amount: 0 }));
+    }
+
+    const out = [];
+    let sumFraction = 0;
+    for (const label of labels) {
+      const sums     = (chargeByRule[label] || 0) + (transByRule[label] || 0);
+      const fraction = sums === 0 ? 0 : -sums / revenus; // sums===0 → 0 (évite -0)
+      sumFraction += fraction;
+      out.push({ label, pct: Math.round(fraction * 1000) / 10, amount: roundCent(fraction * revenus) });
+    }
+    const reste = 1 - sumFraction;
+    out.push({ label: 'Reste', pct: Math.round(reste * 1000) / 10, amount: roundCent(reste * revenus) });
+    return out;
+  }
+
   root.AlfredForecast = {
-    compute,
-    // exposés pour les tests de parité unitaires :
+    compute, computeBudgetRules,
+    // exposés pour les tests unitaires :
     indexPrev, budgetCalc, epargneCalc, checkCeiling, findPrevLines,
     parseMmYyyy, absMonthToText, roundCent, periodText,
   };
