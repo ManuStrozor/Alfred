@@ -12,7 +12,7 @@ test.describe('Selects transaction (listes fixes)', () => {
 
   test('tx-rule : option vide + les 4 règles fixes', async ({ page }) => {
     const labels = await page.locator('#tx-rule option').allTextContents();
-    expect(labels).toEqual(['—', 'Besoins', 'Envies', 'Epargne', 'Dette']);
+    expect(labels).toEqual(['—', 'Besoins', 'Dette', 'Epargne', 'Envies']);
   });
 
   test('tx-category : catégories groupées par thème (optgroups)', async ({ page }) => {
