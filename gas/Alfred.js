@@ -4,7 +4,6 @@
 const PROPS      = PropertiesService.getScriptProperties();
 const USER_PROPS = PropertiesService.getUserProperties();
 
-// ----- Onglets --------------------------------------------------------------------------------------------------------------------
 // Multi-user : chaque utilisateur peut enregistrer son propre classeur via setSheetId().
 // Si aucun ID enregistré, on utilise le classeur container (compte propriétaire du script).
 
@@ -474,11 +473,6 @@ function handleReminders() {
   }
 }
 
-/**
- * Demande le montant du salaire reçu, clôture le mois en cours (b_date) :
- * calcule l'écart avec le [Salaire] prévu dans Prevs, enregistre dans Historique,
- * déplace les Trans du mois vers Archives, avance b_date et recalcule.
- */
 function _getClosingDates(bDate) {
   const closingMonth = bDate.getMonth();   // 0-indexé
   const closingYear  = bDate.getFullYear();
@@ -488,8 +482,6 @@ function _getClosingDates(bDate) {
     nextDate:   new Date(closingYear, closingMonth + 1, 1),
   };
 }
-
-// ----- Web App ---------------------------------------------------------------------------------------------------------------
 
 /**
  * Passe en paie depuis la Web App (sans dialogue UI) :
@@ -651,14 +643,14 @@ function doGet(e) {
       .evaluate()
       .setTitle(APP + ' — Installation')
       .setFaviconUrl('https://drive.google.com/uc?id=1ZsdnRrrR4kexfyypNExnhVHTmiMiqJCV&.png')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, interactive-widget=resizes-content');
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1, interactive-widget=resizes-content');
   }
 
   return HtmlService.createTemplateFromFile('App')
     .evaluate()
     .setTitle(APP)
     .setFaviconUrl('https://drive.google.com/uc?id=1ZsdnRrrR4kexfyypNExnhVHTmiMiqJCV&.png')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, interactive-widget=resizes-content');
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, interactive-widget=resizes-content');
 }
 
 // ----- Multi-user : gestion du classeur par utilisateur -------------------------------------------------------------------------
