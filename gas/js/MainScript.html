@@ -50,12 +50,9 @@
   // se répartit entre Envies/Épargne selon ce ratio (30:20 → 60%:40%).
   const RULE_TARGETS = { Envies: 30, Epargne: 20 };
 
-  // Ordre d'affichage (donut + légende) : Dette juste après Besoins (toutes deux subies).
-  const RULE_ORDER = ['Besoins', 'Dette', 'Envies', 'Epargne'];
-
   // Règles budgétaires (fixes) — source unique côté client pour le select transaction et le donut.
-  // Ordre de saisie. Cohérent avec les pills du modal PrevLine et RULE_ORDER/RULE_COLORS.
-  const RULES = ['Besoins', 'Envies', 'Epargne', 'Dette'];
+  // Ordre d'affichage (donut + légende) : Dette juste après Besoins (toutes deux subies).
+  const RULES = ['Besoins', 'Dette', 'Epargne', 'Envies'];
 
   // Catégories de dépense (fixes), groupées par thème → optgroups du select transaction.
   // ⚠ Orientées DÉPENSES uniquement : les revenus restent sans catégorie (comptés dans d_in du donut).
@@ -68,7 +65,7 @@
     'Santé':           ['Médecin', 'Pharmacie', 'Mutuelle', 'Optique & Dentaire'],
     'Loisirs':         ['Sorties', 'Sport', 'Voyages', 'Abonnements', 'Culture', 'Hobbies'],
     'Achats':          ['Vêtements', 'High-tech', 'Maison & Déco', 'Cadeaux'],
-    'Vie quotidienne': ['Beauté & Coiffeur', 'Animaux', 'Éducation', 'Enfants', 'Dons'],
+    'Vie quotidienne': ['Beauté & Coiffeur', 'Animaux', 'Éducation', 'Enfants', 'Tabac', 'Dons'],
     'Finances':        ['Épargne', 'Remboursement crédit', 'Impôts & Taxes', 'Frais bancaires'],
   };
 
@@ -546,7 +543,7 @@
     _showSkeleton('recent-trans-list');
     _setSkeleton('eval-result');
     _setSkeleton('forecast-list', 'li');
-    _setSkeleton('charges-list');
+    _showSkeleton('charges-list');
     _setSkeleton('task-list-container');
     _resetDonut();
 
@@ -592,9 +589,9 @@
   }
 
   function renderDonut(rules) {
-    // Ordre d'affichage : Besoins, Dette, puis le reste (cf. RULE_ORDER) ; Reste/inconnus à la fin
+    // Ordre d'affichage : Besoins, Dette, puis le reste (cf. RULES) ; Reste/inconnus à la fin
     rules = [...rules].sort((a, b) => {
-      const ia = RULE_ORDER.indexOf(a.label), ib = RULE_ORDER.indexOf(b.label);
+      const ia = RULES.indexOf(a.label), ib = RULES.indexOf(b.label);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
     _cache.rules = rules;
@@ -644,8 +641,8 @@
     const targetSegs = [
       { label: 'Besoins', pct: besoinsPct },
       { label: 'Dette', pct: dettePct },
-      { label: 'Envies', pct: restePct * RULE_TARGETS.Envies / tWeight },
       { label: 'Epargne', pct: restePct * RULE_TARGETS.Epargne / tWeight },
+      { label: 'Envies', pct: restePct * RULE_TARGETS.Envies / tWeight },
     ];
     const targetByLabel = {};
     let tCum = 0;
@@ -1790,7 +1787,7 @@
 
   /* ── Chargement ── */
   function loadPrevLines() {
-    _setSkeleton('charges-list');
+    _showSkeleton('charges-list');
     runner('Charges', data => {
       _charges.lines = data.lines;
       _charges.types = data.types;
@@ -1894,7 +1891,59 @@
       return a.amount <= b.amount ? -1 : 1;
     });
 
-    list.innerHTML = sorted.map(l => _prevItemHtml(l, curAbs)).join('');
+    _emptyList('charges-list');
+    const templateItem = list.lastElementChild;
+    if (templateItem) {
+      sorted.map(line => {
+        const active = _lineActiveForAbs(line, curAbs);
+        const color = RULE_COLORS[line.rule] || 'var(--clr-muted)';
+
+        const newOne = templateItem.cloneNode(true);
+        newOne.classList.toggle('is-active', active);
+        newOne.dataset.row = line.row;
+        newOne.dataset.label = escHtml(line.label);
+        const prevAccentEl = newOne.querySelector('.prev-accent');
+        prevAccentEl.style.background = color;
+        prevAccentEl.textContent = escHtml(line.rule);
+        newOne.querySelector('.prev-label').textContent = escHtml(line.label || line.type, true);
+        const prevAmountEl = newOne.querySelector('.prev-amount');
+        prevAmountEl.classList.add(line.amount >= 0 ? 'positive' : (line.rule == 'Epargne' ? 'epargne' : 'negative'));
+        prevAmountEl.textContent = fmt(line.amount);
+        // prev-meta
+        const prevMetaEl = newOne.querySelector('.prev-meta');
+        if (!active && line.rule) {
+          const span = document.createElement('span');
+          span.classList.add('prev-tag');
+          span.style = '--tc:' + color;
+          span.textContent = escHtml(line.rule);
+          prevMetaEl.appendChild(span);
+        }
+        if (line.type) {
+          const span = document.createElement('span');
+          span.classList.add('prev-tag-dim');
+          span.textContent = escHtml(line.type);
+          prevMetaEl.appendChild(span);
+        }
+        if (line.months) {
+          const span = document.createElement('span');
+          span.classList.add('prev-period');
+          span.textContent = 'Mois ' + escHtml(line.months);
+          prevMetaEl.appendChild(span);
+        }
+        if (line.start || line.end) {
+          const span = document.createElement('span');
+          span.classList.add('prev-period');
+          span.textContent = escHtml(line.start
+            ? (line.end ? `${line.start} → ${line.end}` : `dès ${line.start}`)
+            : `jusqu'à ${line.end}`
+          );
+          prevMetaEl.appendChild(span);
+        }
+        newOne.classList.remove('is-hidden');
+        list.appendChild(newOne);
+      }).join('');
+    }
+
     list.querySelectorAll('.prev-item').forEach(el => {
       const row = parseInt(el.dataset.row, 10);
       makeSwipeable(el, {
@@ -1913,41 +1962,6 @@
     if (_charges.filters.type) chips.push({ key: 'type', label: _charges.filters.type });
     if (_charges.filters.rule) chips.push({ key: 'rule', label: _charges.filters.rule });
     _renderChips('filter-chips', chips, key => { _charges.filters[key] = ''; renderPrevList(); });
-  }
-
-  function _prevItemHtml(line, curAbs) {
-    const active = _lineActiveForAbs(line, curAbs);
-    const color = RULE_COLORS[line.rule] || 'var(--clr-muted)';
-    const cls = line.amount >= 0 ? 'positive' : (line.rule == 'Epargne' ? 'epargne' : 'negative');
-    const period = line.start
-      ? (line.end ? `${line.start} → ${line.end}` : `dès ${line.start}`)
-      : (line.end ? `jusqu'à ${line.end}` : '');
-
-    return `
-    <div class="prev-item${active ? ' is-active' : ''}" data-row="${line.row}" data-label="${escHtml(line.label)}">
-      <div class="swipe-slider">
-        <div class="trans-main prev-main">
-          <div class="prev-accent" style="background:${color}">${escHtml(line.rule)}</div>
-          <div class="prev-body">
-            <div class="prev-top">
-              <span class="prev-label">${escHtml(line.label || line.type, true)}</span>
-              <span class="prev-amount ${cls}">${fmt(line.amount)}</span>
-            </div>
-            <div class="prev-meta">
-              ${!active && line.rule ? `<span class="prev-tag" style="--tc:${color}">${escHtml(line.rule)}</span>` : ''}
-              ${line.type ? `<span class="prev-tag-dim">${escHtml(line.type)}</span>` : ''}
-              ${line.months ? `<span class="prev-period">Mois ${escHtml(line.months)}</span>` : ''}
-              ${period ? `<span class="prev-period">${escHtml(period)}</span>` : ''}
-            </div>
-          </div>
-        </div>
-        <div class="swipe-actions">
-          <button class="swipe-edit" type="button" aria-label="Modifier">✏️</button>
-          <button class="swipe-del" type="button" aria-label="Supprimer">🗑️</button>
-        </div>
-      </div>
-    </div>
-    `;
   }
 
   /* ── Formulaire add/edit ── */
