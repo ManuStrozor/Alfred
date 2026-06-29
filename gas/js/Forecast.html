@@ -1,0 +1,284 @@
+<script>
+/*
+ * Alfred — Calcul du forecast côté client (source de vérité UNIQUE depuis la refonte « calcul client »).
+ *
+ * Le serveur ne calcule plus le forecast : il fournit `forecastInputs` (montants bucketés par mois
+ * absolu → aucun reparsing de date ici, donc aucun écart de fuseau) et les lignes Prevs de
+ * getPrevLines() (bornes MM/YYYY, sans objet Date) ; ce module fait tout le reste.
+ *
+ * compute() produit l'objet forecast consommé par applyForecast() :
+ *   { periodText, months, cslName } + ceilingAlerts (alertes « plafond dépassé », affichées en toast).
+ *
+ * Exposé en un seul point d'accès `AlfredForecast` sur le global (window en navigateur,
+ * contexte vm en test) — robuste au scope cross-<script> de HtmlService.
+ *
+ * ⚠ Couvert par le test GOLDEN __tests__/forecastClient.test.js (sorties figées). Toute modif de la
+ *   math doit y être répercutée intentionnellement.
+ */
+(function (root) {
+  'use strict';
+
+  /* ── Helpers (ports 1:1 de Alfred.js) ──────────────────────────────────── */
+
+  function roundCent(v) { return Math.round(v * 100) / 100; }
+
+  function parseMmYyyy(str) {
+    return (+str.substr(3)) * 12 + (+str.substr(0, 2) - 1);
+  }
+
+  function parsePrevBounds(start, end, months) {
+    return {
+      start:  start  ? parseMmYyyy(String(start)) : null,
+      end:    end    ? parseMmYyyy(String(end))   : null,
+      months: months ? new Set(String(months).split(',').map(Number)) : null,
+    };
+  }
+
+  function prevLineApplies(b, absMonth) {
+    if (b.start !== null && absMonth < b.start) return false;
+    if (b.end   !== null && absMonth > b.end)   return false;
+    if (b.months && !b.months.has(absMonth % 12 + 1)) return false;
+    return true;
+  }
+
+  function mapPush(map, key, value) {
+    map.has(key) ? map.get(key).push(value) : map.set(key, [value]);
+  }
+
+  function clampStart(val, startAbs, endAbs) {
+    if (val === null) return startAbs;
+    if (val > endAbs) return null;
+    return Math.max(val, startAbs);
+  }
+
+  function clampEnd(val, startAbs, endAbs) {
+    if (val === null)   return endAbs;
+    if (val < startAbs) return null;
+    return Math.min(val, endAbs);
+  }
+
+  function absMonthToText(absMonth) {
+    const year  = Math.floor(absMonth / 12);
+    const month = absMonth % 12 + 1;
+    return String(month).padStart(2, '0') + '/' + year;
+  }
+
+  /* ── Indexation & calculs ──────────────────────────────────────────────── */
+
+  /** Port de indexPrev — consomme les lignes getPrevLines() (line.type = compte cible, col E). */
+  function indexPrev(prevLines, startAbs, period, savingsIds) {
+    const map = new Map();
+    const endAbs = startAbs + period;
+
+    const parsed = prevLines.map(p => ({
+      ...parsePrevBounds(p.start, p.end, p.months),
+      amount: p.amount,
+      accId:  p.type || null,
+    }));
+
+    for (const p of parsed) {
+      if (!p.amount) continue;
+      const start = clampStart(p.start, startAbs, endAbs);
+      const end   = clampEnd(p.end, startAbs, endAbs);
+      if (start == null || end == null) continue;
+      for (let occur = start; occur <= end; occur++) {
+        if (!p.months || p.months.has(occur % 12 + 1)) {
+          mapPush(map, occur, p.amount);
+          if (savingsIds.has(p.accId)) mapPush(map, p.accId + '_' + occur, p.amount);
+        }
+      }
+    }
+    return map;
+  }
+
+  /** Port de budgetCalc — `tranSums` = sommes mensuelles pré-agrégées côté serveur. */
+  function budgetCalc(prevMap, tranSums, startAbs, period) {
+    const amounts = new Array(period);
+    let currAbs = startAbs;
+    for (let i = 0; i < period; i++, currAbs++) {
+      let prevs = 0;
+      if (prevMap.has(currAbs)) for (const a of prevMap.get(currAbs)) prevs += a;
+      const trans = tranSums[currAbs] || 0;
+      amounts[i] = [prevs + trans];
+    }
+    return amounts;
+  }
+
+  /** Port de epargneCalc — `epaSums` = sommes mensuelles pré-agrégées du compte. */
+  function epargneCalc(prevMap, epaSums, startAbs, soldeAbs, period, acc) {
+    const amounts = new Array(period);
+    let currAbs = soldeAbs;
+    let cumul = 0, benefit = 0;
+    for (let i = soldeAbs - startAbs; i < period; i++, currAbs++) {
+      let prevs = 0;
+      const key = acc.id + '_' + currAbs;
+      if (prevMap.has(key)) for (const a of prevMap.get(key)) prevs -= a;
+      const eps = epaSums[currAbs] || 0;
+      cumul += prevs + eps;
+      if (acc.rate > 0) {
+        benefit += acc.rate * cumul / 12;
+        if (currAbs % 12 === 0) { cumul += benefit; benefit = 0; }
+      }
+      if (i >= 0) amounts[i] = [cumul];
+    }
+    return amounts;
+  }
+
+  /** Port de findPrevLines — numéros de ligne Prevs versant sur accId au mois donné. */
+  function findPrevLines(prevLines, accId, absMonth) {
+    const lines = [];
+    for (const p of prevLines) {
+      if (String(p.type).trim() !== accId || !p.amount) continue;
+      if (!prevLineApplies(parsePrevBounds(p.start, p.end, p.months), absMonth)) continue;
+      lines.push(p.row);
+    }
+    return lines;
+  }
+
+  /**
+   * Port de checkCeiling — retourne l'alerte { title, message } du 1er dépassement
+   * imputable à Prevs, ou null. Les chaînes sont identiques aux toasts serveur (parité).
+   */
+  function checkCeiling(output, startAbs, acc, prevMap, prevLines) {
+    if (!acc.ceiling) return null;
+    for (let i = 0; i < output.length; i++) {
+      if (output[i] === undefined) continue;
+      const balance = roundCent(output[i][0]);
+      if (balance <= acc.ceiling) continue;
+      const absMonth = startAbs + i;
+      if (!prevMap.has(acc.id + '_' + absMonth)) return null;
+      let totalPrevs = 0;
+      for (const a of prevMap.get(acc.id + '_' + absMonth)) totalPrevs += a;
+      const corrected = roundCent(balance + totalPrevs - acc.ceiling);
+      const excess    = roundCent(balance - acc.ceiling);
+      const lines = findPrevLines(prevLines, acc.id, absMonth);
+      if (lines.length === 0) return null;
+      const mois   = absMonthToText(absMonth);
+      const lignes = lines.length === 1 ? `ligne ${lines[0]}` : `lignes ${lines.join(', ')}`;
+      const detail = lines.length === 1
+        ? `corriger ${lignes} (Prevs) → ${corrected} €`
+        : `nouveau total des versements pour ${lignes} (Prevs) → ${corrected} €`;
+      return {
+        title:   `Plafond ${acc.id} dépassé`,
+        message: `${acc.id} dépasse ${acc.ceiling} € en ${mois} (+${excess} €) — ${detail}.`,
+      };
+    }
+    return null;
+  }
+
+  /** Texte de période — port de _getFullForecast. */
+  function periodText(n) {
+    return n % 12 === 0 && n >= 12
+      ? (n / 12) + ' an' + (n / 12 > 1 ? 's' : '')
+      : n + ' mois';
+  }
+
+  /* ── Orchestration ─────────────────────────────────────────────────────── */
+
+  /**
+   * Calcule le forecast complet à partir du payload serveur.
+   * Réplique l'orchestration de getForecast() (fenêtre min/max d'indexPrev, period+1 mois).
+   * @param {object} inputs  forecastInputs renvoyé par getAllData
+   * @param {{lines:Array}} prevs  getPrevLines()
+   * @returns {{ periodText:string, months:object[], cslName:string, ceilingAlerts:object[] }}
+   */
+  function compute(inputs, prevs) {
+    const { currentAbs, period, budgetInit, cslName, accounts, tranSums, epargne } = inputs;
+    const prevLines  = (prevs && prevs.lines) || [];
+    const savingsIds = new Set(accounts.map(a => a.id));
+
+    const initialAbsList = accounts.map(a => epargne[a.id].initialAbs);
+    const min = Math.min(...initialAbsList, currentAbs);
+    const max = Math.max(period, period + 1 + currentAbs - min);
+    const prevMap = indexPrev(prevLines, min, max, savingsIds);
+
+    const revOutput  = budgetCalc(prevMap, tranSums, currentAbs, period + 1);
+    const accOutputs = accounts.map(a =>
+      epargneCalc(prevMap, epargne[a.id].sums, currentAbs, epargne[a.id].initialAbs, period + 1, a));
+
+    // accounts conserve l'ordre serveur [LEP, LA, CSL] → colonnes lep/la/csl.
+    const idx = id => accounts.findIndex(a => a.id === id);
+    const col = (id, i) => {
+      const o = accOutputs[idx(id)][i];
+      return o ? roundCent(o[0]) : null;
+    };
+
+    const months = [];
+    for (let i = 0; i <= period; i++) {
+      const abs  = currentAbs + i;
+      const base = {
+        month:  absMonthToText(abs),
+        budget: roundCent(revOutput[i][0]),
+        lep: col('LEP', i), la: col('LA', i), csl: col('CSL', i),
+      };
+      months.push(i === 0
+        ? { ...base, isCurrent: true, budgetInit }
+        : { ...base, isForecast: true });
+    }
+
+    const ceilingAlerts = accounts
+      .map(a => checkCeiling(accOutputs[idx(a.id)], currentAbs, a, prevMap, prevLines))
+      .filter(Boolean);
+
+    return { periodText: periodText(period), months, cslName, ceilingAlerts };
+  }
+
+  /**
+   * Répartition du budget par règle (donut) — port de l'ancien getBudgetRules (formules Budgets!F4:H8).
+   * Pour chaque règle (hors Reste) :
+   *   pourcentage = -(Σ charges actives + Σ transactions du mois, filtrées sur la règle) / (b_in + d_in)
+   *   montant     = pourcentage × (b_in + d_in)
+   * où  b_in = Σ montants > 0 des charges actives au mois courant
+   *     d_in = Σ montants > 0 des transactions (mois courant) sans catégorie
+   * Reste : pourcentage = 1 − Σ(autres pourcentages) ; montant = pourcentage × (b_in + d_in).
+   * (b_in + d_in) = 0 → division impossible → tout à 0 (comme la formule sheet en erreur).
+   *
+   * @param {{ prevLines:Array, monthTransactions:Array, currentAbs:number, ruleLabels:string[] }} o
+   * @returns {{ label:string, pct:number, amount:number }[]}  pct en %, 1 décimale ; montant au centime.
+   */
+  function computeBudgetRules(o) {
+    const prevLines = o.prevLines || [];
+    const trans     = o.monthTransactions || [];
+    const labels    = o.ruleLabels || [];
+
+    let bIn = 0;
+    const chargeByRule = {};
+    for (const line of prevLines) {
+      if (!prevLineApplies(parsePrevBounds(line.start, line.end, line.months), o.currentAbs)) continue;
+      if (line.amount > 0) bIn += line.amount;
+      if (line.rule) chargeByRule[line.rule] = (chargeByRule[line.rule] || 0) + line.amount;
+    }
+
+    let dIn = 0;
+    const transByRule = {};
+    for (const t of trans) {
+      if (t.amount > 0 && !t.category) dIn += t.amount;
+      if (t.rule) transByRule[t.rule] = (transByRule[t.rule] || 0) + t.amount;
+    }
+
+    const revenus = bIn + dIn;
+    if (revenus === 0) {
+      return [...labels, 'Reste'].map(label => ({ label, pct: 0, amount: 0 }));
+    }
+
+    const out = [];
+    let sumFraction = 0;
+    for (const label of labels) {
+      const sums     = (chargeByRule[label] || 0) + (transByRule[label] || 0);
+      const fraction = sums === 0 ? 0 : -sums / revenus; // sums===0 → 0 (évite -0)
+      sumFraction += fraction;
+      out.push({ label, pct: Math.round(fraction * 1000) / 10, amount: roundCent(fraction * revenus) });
+    }
+    const reste = 1 - sumFraction;
+    out.push({ label: 'Reste', pct: Math.round(reste * 1000) / 10, amount: roundCent(reste * revenus) });
+    return out;
+  }
+
+  root.AlfredForecast = {
+    compute, computeBudgetRules,
+    // exposés pour les tests unitaires :
+    indexPrev, budgetCalc, epargneCalc, checkCeiling, findPrevLines,
+    parseMmYyyy, absMonthToText, roundCent, periodText,
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>

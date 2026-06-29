@@ -50,7 +50,7 @@ describe('getGeminiInsight', () => {
 
   test('Cas 1 — Pas de clé API → { noKey: true }', () => {
     const g = setup({ apiKey: null });
-    expect(g.getGeminiInsight(null)).toEqual({ noKey: true });
+    expect(g.getGeminiInsight(null, FAKE_CUR)).toEqual({ noKey: true });
   });
 
   test('Cas 2 — Cache serveur valide + même clé client → { cached: true }', () => {
@@ -58,7 +58,7 @@ describe('getGeminiInsight', () => {
     const cached  = JSON.stringify({ message: 'hello', icon: '☀️', key, apiCalled: false });
     const g       = setup({ cachePreset: { gemini_insight: cached } });
 
-    const result = g.getGeminiInsight(key);
+    const result = g.getGeminiInsight(key, FAKE_CUR);
     expect(result).toEqual({ cached: true, key });
   });
 
@@ -67,7 +67,7 @@ describe('getGeminiInsight', () => {
     const cached = JSON.stringify({ message: 'hello', icon: '☀️', key, apiCalled: false });
     const g      = setup({ cachePreset: { gemini_insight: cached } });
 
-    const result = g.getGeminiInsight('old|stale|key|0|0|0');
+    const result = g.getGeminiInsight('old|stale|key|0|0|0', FAKE_CUR);
     expect(result.message).toBe('hello');
     expect(result.apiCalled).toBe(false);
     expect(result.key).toBe(key);
@@ -77,7 +77,7 @@ describe('getGeminiInsight', () => {
     const key = expectedKey();
     const g   = setup({ fetchResponse: geminiOkResponse('Réponse Gemini') });
 
-    const result = g.getGeminiInsight(key);
+    const result = g.getGeminiInsight(key, FAKE_CUR);
     // L'optimisation "données inchangées → { cached: true }" est désactivée (&& false)
     expect(result.message).toBe('Réponse Gemini');
     expect(result.apiCalled).toBe(true);
@@ -86,7 +86,7 @@ describe('getGeminiInsight', () => {
   test('Cas 5 — Cache expiré + clé différente → appel API Gemini réel', () => {
     const g = setup({ fetchResponse: geminiOkResponse('Bravo pour ton budget !') });
 
-    const result = g.getGeminiInsight('old|stale|key|0|0|0');
+    const result = g.getGeminiInsight('old|stale|key|0|0|0', FAKE_CUR);
     expect(result.message).toBe('Bravo pour ton budget !');
     expect(result.apiCalled).toBe(true);
     expect(result.key).toBe(expectedKey());
@@ -99,7 +99,7 @@ describe('getGeminiInsight', () => {
     };
     const g = setup({ fetchResponse: emptyResponse });
 
-    const result = g.getGeminiInsight('other|key|0|0|0|0');
+    const result = g.getGeminiInsight('other|key|0|0|0|0', FAKE_CUR);
     expect(result).toHaveProperty('error');
     expect(result.error).toMatch(/vide/);
   });
@@ -111,7 +111,7 @@ describe('getGeminiInsight', () => {
     };
     const g = setup({ fetchResponse: badKeyResponse });
 
-    const result = g.getGeminiInsight(null);
+    const result = g.getGeminiInsight(null, FAKE_CUR);
     expect(result).toHaveProperty('error');
     expect(result.error).toMatch(/invalide/i);
   });
@@ -120,7 +120,7 @@ describe('getGeminiInsight', () => {
     const quotaResponse = { getResponseCode: () => 429, getContentText: () => '' };
     const g = setup({ fetchResponse: quotaResponse });
 
-    const result = g.getGeminiInsight(null);
+    const result = g.getGeminiInsight(null, FAKE_CUR);
     expect(result).toHaveProperty('error');
     expect(result.error).toMatch(/quota/i);
   });

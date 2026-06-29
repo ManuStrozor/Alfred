@@ -187,8 +187,9 @@ function deleteProp(source, key) {
  *   { cached: true, key }      — données inchangées, le client peut afficher son cache local
  *   { message, icon, key }     — succès (nouveau message ou cache serveur servi)
  *   { error: string }          — erreur technique
+ * @param {{month:string, budget:number, lep:number, la:number}} cur  mois courant calculé côté client
  */
-function getGeminiInsight(clientKey) {
+function getGeminiInsight(clientKey, cur) {
   const apiKey = getProp('GEMINI_API_KEY');
   if (!apiKey) return { noKey: true };
 
@@ -208,9 +209,7 @@ function getGeminiInsight(clientKey) {
   const MODELS = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
 
   try {
-    const fc  = getFullForecast();
     const trs = _getMonthTransactions().filter(tr => tr.category?.length > 0);
-    const cur = fc?.months?.find(m => m.isCurrent);
     if (!cur) return { error: 'Mois courant introuvable dans le prévisionnel.' };
 
     const bdate       = BUD_DATE.getValue();
@@ -318,9 +317,9 @@ function getCached(key, fn, ttl = CACHE_TTL) {
 
 /** Supprime les entrées de cache invalidées par une modification du classeur. */
 function invalidateCache() {
-  CACHE.removeAll(['forecast', 'budget_rules']);
-  // gemini_insight expire naturellement via son TTL (60s) —
-  // la clé de données (clientKey) détecte les changements à l'expiration.
+  CACHE.removeAll(['budget_rules']);
+  // Le forecast n'est plus caché côté serveur (calcul client). gemini_insight expire
+  // naturellement via son TTL (60s) — la clé de données (clientKey) détecte les changements.
 }
 
 // ----- Constantes ----------------------------------------------------------------------------------------------------------------
@@ -330,20 +329,6 @@ const LEP = { id: 'LEP', rate: parseFloat(LEP_RATE), ceiling: parseFloat(LEP_CEI
 const LA = { id: 'LA', rate: parseFloat(LA_RATE), ceiling: parseFloat(LA_CEILING) };
 const CSL = { id: 'CSL', rate: 0, ceiling: null };
 const SAVINGS_ACCOUNTS = [LEP, LA, CSL];
-
-// Lignes de départ des colonnes de sortie dans l'onglet Budgets.
-// ROW_TIMELINE : dates (col A).
-// ROW_BALANCE : soldes budget (col B) et épargne (cols C-E) démarrent ligne 3.
-const ROW_TIMELINE  = 4;
-const ROW_BALANCE = 3;
-
-const COOR = {
-  dat:  { col: 1, row: ROW_TIMELINE },
-  rev:  { col: 2, row: ROW_BALANCE },
-  lep:  { col: 3, row: ROW_BALANCE },
-  la:   { col: 4, row: ROW_BALANCE },
-  csl:{ col: 5, row: ROW_BALANCE },
-};
 
 const APP   = 'Alfred';
 const TITSP = APP + ' - Répartir une dépense';
@@ -502,31 +487,35 @@ function _getClosingDates(bDate) {
  * Passe en paie depuis la Web App (sans dialogue UI) :
  * calcule l'écart salaire, clôture le mois, retourne le nouveau prévisionnel.
  * @param {number} salary  Montant du salaire reçu
- * @returns {{ closedMonth: string, archivedCount: number, diff: number, forecast: object }}
+ * @param {{lep:number, la:number, csl:number}} [balances]  Soldes épargne calculés côté client
+ *        (inscrits dans Historique). Fallback transitionnel sur les soldes écrits dans Budgets si absent.
+ * @returns {{ closedMonth: string, archivedCount: number, diff: number,
+ *             forecastInputs: object, monthTransactions: object[] }}
  */
-function paydayWeb(salary) {
+function paydayWeb(salary, balances) {
   const bDate = BUD_DATE.getValue();
   if (!(bDate instanceof Date)) throw new Error('Date invalide en A3.');
 
   const { closingMonth, closingYear, closingStr, nextDate } = _getClosingDates(bDate);
 
-  const { forecasted, toArchive, transTotal, lepBal, laBal, cslBal, prevsTotal } =
+  const { forecasted, toArchive, transTotal, prevsTotal } =
     _collectClosingInfo(closingYear, closingMonth);
+  const { lep, la, csl } = _closingBalances(balances);
   const diff  = roundCent(salary - forecasted);
   const solde = roundCent(prevsTotal + transTotal + diff);
 
-  _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lepBal, laBal, cslBal);
+  _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lep, la, csl);
   handleReminders();
 
-  return { closedMonth: closingStr, archivedCount: toArchive.length, diff: solde, forecast: getFullForecast() };
+  return { closedMonth: closingStr, archivedCount: toArchive.length, diff: solde, ..._editResponse() };
 }
 
 /**
  * Collecte les données du mois à clôturer sans modifier le classeur.
+ * Les soldes épargne (Historique) ne sont plus lus ici : ils proviennent du client via paydayWeb.
  * @param {number} closingYear   Année du mois à clôturer
  * @param {number} closingMonth  Mois 0-indexé du mois à clôturer
- * @returns {{ forecasted: number, toArchive: object[], transTotal: number,
- *             lepBal: number, laBal: number, cslBal: number }}
+ * @returns {{ forecasted: number, toArchive: object[], transTotal: number, prevsTotal: number }}
  */
 function _collectClosingInfo(closingYear, closingMonth) {
 
@@ -552,8 +541,6 @@ function _collectClosingInfo(closingYear, closingMonth) {
     }
   }
 
-  const [lepBal, laBal, cslBal] = BUD_TAB.getRange(ROW_BALANCE, COOR.lep.col, 1, 3).getValues()[0];
-
   // Somme de toutes les prévisions actives pour le mois de clôture
   let prevsTotal = 0;
   for (let i = 1; i < preValues.length; i++) {
@@ -563,7 +550,20 @@ function _collectClosingInfo(closingYear, closingMonth) {
     prevsTotal += Number(p[3]);
   }
 
-  return { forecasted, toArchive, transTotal, lepBal, laBal, cslBal, prevsTotal };
+  return { forecasted, toArchive, transTotal, prevsTotal };
+}
+
+/**
+ * Soldes épargne au moment de la clôture (inscrits dans Historique).
+ * Source de vérité : valeurs calculées côté client, transmises par paydayWeb. Le serveur ne
+ * calcule plus le forecast (les cellules de soldes de Budgets ne sont plus alimentées), donc
+ * aucun repli sur la sheet : on exige des soldes valides pour ne pas archiver de données obsolètes.
+ * @param {{lep:number, la:number, csl:number}} balances
+ */
+function _closingBalances(balances) {
+  const ok = balances && ['lep', 'la', 'csl'].every(k => typeof balances[k] === 'number');
+  if (!ok) throw new Error(`Soldes épargne manquants : rechargez l'application avant de clôturer.`);
+  return { lep: balances.lep, la: balances.la, csl: balances.csl };
 }
 
 function _ensureSheetWithHeader(name, header) {
@@ -720,76 +720,6 @@ function includes(filenames) {
 }
 
 
-/**
- * Retourne la totalité du prévisionnel en une seule requête :
- * mois archivés (Historique) + mois courant + mois prévisionnels (Budgets).
- * Les mois sans données entre deux entrées sont remplis avec null.
- * b_date n'est jamais modifié.
- * @returns {{ periodText: string, months: { month: string, isCurrent?: boolean, isForecast?: boolean,
- *             budget: number|null, budgetInit?: number, lep: number|null, la: number|null, csl: number|null }[] }}
- */
-function getFullForecast() {
-  return getCached('forecast', _getFullForecast);
-}
-
-function _getFullForecast() {
-  const bDate      = BUD_DATE.getValue();
-  const currentAbs = toAbsMonth(bDate.getFullYear(), bDate.getMonth());
-  const dataMap    = new Map();
-
-  getForecast();
-  // 1. Mois courant (ROW_BALANCE, cols B–E + G2/I3 pour budgetInit = b_in + b_out + d_in)
-  const balRow   = BUD_TAB.getRange(ROW_BALANCE, COOR.rev.col, 1, 4).getValues()[0];
-  const initVals = BUD_TAB.getRange('G2:I3').getValues(); // [[G2=b_in, H2, I2=d_in], [G3, H3=b_out, I3]]
-  const curStr   = absMonthToText(currentAbs);
-  dataMap.set(currentAbs, {
-    month: curStr, isCurrent: true,
-    budget:     roundCent(balRow[0]),
-    budgetInit: roundCent(initVals[0][0] + initVals[1][1] + initVals[0][2]),
-    lep:        roundCent(balRow[1]),
-    la:         roundCent(balRow[2]),
-    csl:        roundCent(balRow[3]),
-  });
-
-  // 2. Mois prévisionnels (Budgets, ROW_TIMELINE+, cols A–E)
-  let maxAbs = currentAbs;
-  const lastRow = BUD_TAB.getLastRow();
-  if (lastRow >= ROW_TIMELINE) {
-    const rows = BUD_TAB.getRange(ROW_TIMELINE, COOR.dat.col, lastRow - ROW_TIMELINE + 1, 5).getValues();
-    for (const row of rows) {
-      if (!(row[0] instanceof Date)) continue;
-      const d   = row[0];
-      const abs = toAbsMonth(d.getFullYear(), d.getMonth());
-      if (abs > maxAbs) maxAbs = abs;
-      dataMap.set(abs, {
-        month: absMonthToText(abs),
-        isForecast: true,
-        budget: roundCent(row[1]),
-        lep:    roundCent(row[2]),
-        la:     roundCent(row[3]),
-        csl:  roundCent(row[4]),
-      });
-    }
-  }
-
-  // Plage continue de currentAbs à maxAbs
-  const months = [];
-  for (let abs = currentAbs; abs <= maxAbs; abs++) {
-    months.push(dataMap.get(abs) || {
-      month: absMonthToText(abs), budget: null, lep: null, la: null, csl: null,
-    });
-  }
-
-  // Période en toutes lettres
-  const n          = getPeriod(BUD_PERIOD.getValue());
-  const periodText = n % 12 === 0 && n >= 12
-    ? (n / 12) + ' an' + (n / 12 > 1 ? 's' : '')
-    : n + ' mois';
-
-  return { periodText, months, cslName: CSL_NAME, monthTransactions: _getMonthTransactions() };
-}
-
-
 /** Transactions du mois courant (b_date), triées du plus récent au plus ancien. */
 function _getMonthTransactions() {
   const bDate = BUD_DATE.getValue();
@@ -826,12 +756,86 @@ function _getMonthTransactions() {
   return rows;
 }
 
-/** Web app : supprime la ligne Trans à l'index donné, recalcule et renvoie le forecast. */
+/** Somme une Map<absMonth, number[]> en objet {absMonth: total} sérialisable (JSON ne gère pas les Map). */
+function _sumMonthMap(map) {
+  const out = {};
+  for (const [k, arr] of map) out[k] = arr.reduce((s, v) => s + v, 0);
+  return out;
+}
+
+/**
+ * Phase 0 — Données brutes pour recalculer le forecast côté client.
+ * Montants bucketés par mois absolu côté serveur (réutilise indexTran/indexEpargne) afin de
+ * neutraliser tout écart de fuseau au reparsing client. Les lignes Prevs ne sont PAS incluses :
+ * déjà fournies par getPrevLines() (bornes MM/YYYY, sans objet Date → indexables côté client).
+ * Best-effort : ne casse jamais getAllData (try/catch → null ; le client retombe sur le forecast serveur).
+ */
+function _forecastInputs() {
+  try {
+    const period = getPeriod(BUD_PERIOD.getValue());
+    const date   = BUD_DATE.getValue();
+    if (!(date instanceof Date)) return null;
+    const currentAbs = toAbsMonth(date.getFullYear(), date.getMonth());
+
+    // Trans → sommes mensuelles ; complétées depuis Archives si le mois courant y manque (cf. getForecast).
+    const tranMap = indexTran(readSheetData(TRA_TAB, 2), TRA_TAB.getName());
+    if (!tranMap.has(currentAbs) && ARC_TAB) {
+      const arcLastRow = ARC_TAB.getLastRow();
+      if (arcLastRow >= 2) {
+        const arcMap = indexTran(ARC_TAB.getRange(1, 1, arcLastRow, 2).getValues(), ARC_TAB.getName());
+        for (const [month, amounts] of arcMap) {
+          if (!tranMap.has(month)) tranMap.set(month, amounts);
+        }
+      }
+    }
+
+    // Epargne → sommes mensuelles + mois de départ par compte.
+    // initialAbs = 1re clé insérée (ordre du sheet), transmise explicitement car JSON réordonne
+    // les clés numériques d'un objet (epargneCalc démarre le cumul exactement à ce mois).
+    const epaMaps = indexEpargne(readSheetData(EPA_TAB, 3));
+    const epargne = {};
+    for (const acc of SAVINGS_ACCOUNTS) {
+      const map = epaMaps[acc.id];
+      epargne[acc.id] = {
+        initialAbs: map.size ? map.keys().next().value : null,
+        sums:       _sumMonthMap(map),
+      };
+    }
+
+    // budgetInit (mois courant) = b_in + b_out + d_in = G2 + H3 + I2.
+    const initVals   = BUD_TAB.getRange('G2:I3').getValues();
+    const budgetInit = roundCent(initVals[0][0] + initVals[1][1] + initVals[0][2]);
+
+    return {
+      currentAbs,
+      period,
+      budgetInit,
+      cslName:  CSL_NAME,
+      accounts: SAVINGS_ACCOUNTS.map(a => ({ id: a.id, rate: a.rate, ceiling: a.ceiling })),
+      tranSums: _sumMonthMap(tranMap),
+      epargne,
+    };
+  } catch (_) {
+    return null; // données invalides → le client gère l'absence (plus de forecast serveur de repli).
+  }
+}
+
+/**
+ * Réponse standard des endpoints d'édition : de quoi recalculer le forecast côté client.
+ * @param {boolean} [withPrevs]  inclure les lignes Prevs (les éditions de charges les modifient).
+ */
+function _editResponse(withPrevs) {
+  const r = { forecastInputs: _forecastInputs(), monthTransactions: _getMonthTransactions() };
+  if (withPrevs) r.prevs = getPrevLines();
+  return r;
+}
+
+/** Web app : supprime la ligne Trans à l'index donné, puis renvoie de quoi recalculer le forecast. */
 function deleteTransactionByRow(rowIndex) {
   if (!Number.isInteger(rowIndex) || rowIndex < 2) throw new Error('Index invalide : ' + rowIndex);
   TRA_TAB.deleteRow(rowIndex);
-  getForecast(); // invalide déjà le cache en fin d'exécution
-  return _getFullForecast();
+  getForecast();
+  return _editResponse();
 }
 
 /** Web app : modifie une ligne Trans existante, recalcule et renvoie le forecast. */
@@ -843,25 +847,10 @@ function editTransactionByRow(rowIndex, amount, date, label, rule, category) {
     dateObj, parseFloat(amount), String(label || ''), String(rule || ''), String(category || ''),
   ]]);
   TRA_TAB.getRange(rowIndex, 1).setNumberFormat('dd/MM/yyyy');
-  getForecast(); // invalide déjà le cache en fin d'exécution
-  return _getFullForecast();
+  getForecast();
+  return _editResponse();
 }
 
-
-/**
- * Retourne la répartition du budget par règle pour le mois courant.
- * Lit Budgets F4:H8 — F : libellé, G : % décimal consommé, H : montant € (= G × total revenus).
- * @returns {{ label: string, pct: number, amount: number }[]}
- */
-function getBudgetRules() {
-  return getCached('budget_rules', () =>
-    BUD_TAB.getRange('F4:H8').getValues().map(r => ({
-      label:  String(r[0]).trim(),
-      pct:    typeof r[1] === 'number' ? Math.round(r[1] * 1000) / 10 : 0,
-      amount: typeof r[2] === 'number' ? roundCent(r[2]) : 0,
-    }))
-  );
-}
 
 /** Lit les valeurs autorisées d'une colonne via sa validation de données. */
 function _listFromValidation(tab, col) {
@@ -876,13 +865,6 @@ function _listFromValidation(tab, col) {
     return values[0].getValues().flat().filter(v => v !== '');
   }
   return [];
-}
-
-function getTransOptions() {
-  return {
-    rules:      _listFromValidation(TRA_TAB, 4), // col D
-    categories: _listFromValidation(TRA_TAB, 5), // col E
-  };
 }
 
 /**
@@ -900,7 +882,7 @@ function addTransaction(amount, date, label, rule, category) {
   const newRow = TRA_TAB.getLastRow() + 1;
   TRA_TAB.getRange(newRow, 1, 1, 5).setValues([[d, amount, label, rule || '', category || '']]);
   getForecast();
-  return _getFullForecast();
+  return _editResponse();
 }
 
 // ----- Prevs CRUD (Web App) ----------------------------------------------------------------------------------------------------
@@ -955,7 +937,7 @@ function addPrevLine(data) {
   PRE_TAB.getRange(newRow, 1, 1, 8).setValues([_prevRowData(data)]);
   _setPrevFormula(newRow);
   getForecast();
-  return _getFullForecast();
+  return _editResponse(true);
 }
 
 /** Web app : modifie une ligne Prevs existante et retourne le nouveau prévisionnel. */
@@ -964,7 +946,7 @@ function editPrevLine(rowIndex, data) {
   PRE_TAB.getRange(rowIndex, 1, 1, 8).setValues([_prevRowData(data)]);
   _setPrevFormula(rowIndex);
   getForecast();
-  return _getFullForecast();
+  return _editResponse(true);
 }
 
 /** Web app : supprime une ligne Prevs et retourne le nouveau prévisionnel. */
@@ -972,7 +954,7 @@ function deletePrevLine(rowIndex) {
   if (!Number.isInteger(rowIndex) || rowIndex < 2) throw new Error('Index invalide : ' + rowIndex);
   PRE_TAB.deleteRow(rowIndex);
   getForecast();
-  return _getFullForecast();
+  return _editResponse(true);
 }
 
 /** Itère sur toutes les pages de Tasks.Tasks.list('@default') et retourne le tableau plat. */
@@ -1007,97 +989,16 @@ function completeTask(taskId) {
 
 // ----- Orchestration principale ------------------------------------------------------------------------------------------------
 
+/**
+ * Le forecast est désormais calculé côté client (gas/js/Forecast.html — AlfredForecast).
+ * Cette fonction ne fait plus qu'invalider le cache serveur après une modification du classeur ;
+ * la zone de sortie de l'onglet Budgets (timeline + soldes) n'est plus alimentée par le serveur.
+ */
 function getForecast() {
-  try {
-    const requiredSheets = { [SH_BUD]: BUD_TAB, [SH_PRE]: PRE_TAB, [SH_TRA]: TRA_TAB, [SH_EPA]: EPA_TAB };
-    for (const [name, tab] of Object.entries(requiredSheets)) {
-      if (!tab) throw new Error(`Onglet "${name}" introuvable dans le classeur.`);
-    }
-
-    const period = getPeriod(BUD_PERIOD.getValue());
-    const date = BUD_DATE.getValue();
-    if (!(date instanceof Date)) throw new Error('Date invalide en A3.');
-
-    const preValues = readSheetData(PRE_TAB, 5); // A–E : col E = compte d'épargne cible
-    const traValues = readSheetData(TRA_TAB, 2); // A–B : date, montant
-    const epaValues = readSheetData(EPA_TAB, 3); // A–C : date, montant, compte
-    const dateAbs = toAbsMonth(date.getFullYear(), date.getMonth());
-
-    let tranMap = indexTran(traValues, TRA_TAB.getName());
-
-    // Si Trans n'a pas de transactions pour ce mois,
-    // les données ont probablement été archivées → compléter depuis Archives.
-    if (!tranMap.has(dateAbs) && ARC_TAB) {
-      const arcLastRow = ARC_TAB.getLastRow();
-      if (arcLastRow >= 2) {
-        const arcValues = ARC_TAB.getRange(1, 1, arcLastRow, 2).getValues();
-        const arcMap = indexTran(arcValues, ARC_TAB.getName());
-        for (const [month, amounts] of arcMap) {
-          if (!tranMap.has(month)) tranMap.set(month, amounts);
-        }
-      }
-    }
-    const epaMaps = indexEpargne(epaValues);
-    const accountsData = SAVINGS_ACCOUNTS.map(acc => {
-      const map = epaMaps[acc.id];
-      return { acc, map, initialAbs: map.keys().next().value };
-    });
-
-    const min = Math.min(...accountsData.map(a => a.initialAbs), dateAbs);
-    const max = Math.max(period, period+1 + dateAbs - min);
-    const prevMap = indexPrev(preValues, min, max);
-
-    BUD_TAB.getRange(ROW_TIMELINE, COOR.dat.col, MAX_PERIOD+1, 5).clearContent();
-
-    BUD_TAB.getRange(ROW_TIMELINE, COOR.dat.col, period, 1).setValues(getMonthsText(date, period));
-
-    const revOutput     = budgetCalc(prevMap, tranMap, dateAbs, period + 1);
-    const accOutputs    = accountsData.map(a =>
-      epargneCalc(prevMap, a.map, dateAbs, a.initialAbs, period + 1, a.acc));
-    const mergedBalancesOutput = revOutput.map((rev, i) =>
-      [rev[0], ...accOutputs.map(o => o[i][0])]);
-    BUD_TAB.getRange(ROW_BALANCE, COOR.rev.col, period + 1, 4).setValues(mergedBalancesOutput);
-
-    accountsData.forEach((a, i) => checkCeiling(accOutputs[i], dateAbs, a.acc, prevMap, preValues));
-    invalidateCache();
-  } catch (err) {
-    try {
-      TABS.toast('Erreur : ' + err.message, APP, 10);
-    } catch (_) {
-      // toast indisponible (ex. exécution depuis l'éditeur) — erreur déjà loggée.
-    }
-  }
+  invalidateCache();
 }
 
 // ----- Indexation --------------------------------------------------------------------------------------------------------------------------
-
-function indexPrev(prevs, startAbs, period) {
-  const map = new Map();
-  const endAbs = startAbs + period;
-
-  const parsedPrevs = prevs.slice(1).map(p => ({
-    ..._parsePrevBounds(p[0], p[1], p[2]),
-    amount: p[3],
-    accId:  p[4] || null
-  }));
-
-  for (let p of parsedPrevs) {
-    if (!p.amount) continue;
-
-    const start = clampStart(p.start, startAbs, endAbs);
-    const end = clampEnd(p.end, startAbs, endAbs);
-    if (start == null || end == null) continue;
-
-    for (let occur = start; occur <= end; occur++) {
-      if (!p.months || p.months.has(occur%12+1)) {
-        mapPush(map, occur, p.amount);
-        if ([LEP.id, LA.id, CSL.id].includes(p.accId))
-          mapPush(map, p.accId + '_' + occur, p.amount);
-      }
-    }
-  }
-  return map;
-}
 
 function indexTran(trans, sheetName) {
   const map = new Map();
@@ -1128,59 +1029,6 @@ function indexEpargne(epaValues) {
     mapPush(map, absMonth, t[1]);
   }
   return maps;
-}
-
-// ----- Calculs --------------------------------------------------------------------------------------------------------------------------
-
-function budgetCalc(prevMap, tranMap, startAbs, period) {
-  let amounts = new Array(period);
-  let currAbs = startAbs;
-
-  for(let i = 0; i < period; i++, currAbs++) {
-    let prevs = 0, trans = 0;
-
-    if (prevMap.has(currAbs)) {
-      for (let amount of prevMap.get(currAbs)) prevs += amount;
-    }
-
-    if (tranMap.has(currAbs)) {
-      for (let amount of tranMap.get(currAbs)) trans += amount;
-    }
-
-    amounts[i] = [prevs + trans];
-  }
-  return amounts;
-}
-
-function epargneCalc(prevMap, epMap, startAbs, soldeAbs, period, acc) {
-  let amounts = new Array(period);
-  let currAbs = soldeAbs;
-
-  let cumul = 0, benefit = 0;
-  for (let i = soldeAbs-startAbs; i < period; i++, currAbs++) {
-    let prevs = 0, eps = 0;
-
-    if (prevMap.has(acc.id+'_'+currAbs)) {
-      for (let amount of prevMap.get(acc.id+'_'+currAbs)) prevs -= amount;
-    }
-
-    if (epMap.has(currAbs)) {
-      for(let amount of epMap.get(currAbs)) eps += amount;
-    }
-
-    cumul += prevs + eps;
-
-    if (acc.rate > 0) {
-      benefit += acc.rate * cumul / 12;
-      if (currAbs % 12 == 0) {
-        cumul += benefit;
-        benefit = 0;
-      }
-    }
-
-    if (i >= 0) amounts[i] = [cumul];
-  }
-  return amounts;
 }
 
 // ----- Utilitaires ---------------------------------------------------------------------------------------------------------------------
@@ -1221,14 +1069,9 @@ function getPeriod(str) {
   return num;
 }
 
-/** Génère un tableau [[Date], …] pour chaque mois de la période, à écrire en colonne A. */
-function getMonthsText(date, period) {
-  return Array.from({ length: period }, (_, i) => [new Date(date.getFullYear(), date.getMonth() + 1 + i, 1)]);
-}
-
 /**
  * Convertit (year, month) en entier absolu. Convention : month de 0 (jan) à 11 (déc),
- * partagée par indexPrev (filtre occur%12+1) et indexTran.
+ * partagée par indexTran/indexEpargne et le calcul client.
  */
 function toAbsMonth(year, month) {
   return year * 12 + month;
@@ -1258,67 +1101,6 @@ function prevLineApplies(b, absMonth) {
 
 function mapPush(map, key, value) {
   map.has(key) ? map.get(key).push(value) : map.set(key, [value]);
-}
-
-/** Borne de début effective dans [startAbs, endAbs] ; null si la prévision démarre après la fenêtre. */
-function clampStart(val, startAbs, endAbs) {
-  if (val === null)   return startAbs;
-  if (val > endAbs)   return null;
-  return Math.max(val, startAbs);
-}
-
-/** Borne de fin effective dans [startAbs, endAbs] ; null si la prévision se termine avant la fenêtre. */
-function clampEnd(val, startAbs, endAbs) {
-  if (val === null)    return endAbs;
-  if (val < startAbs)  return null;
-  return Math.min(val, endAbs);
-}
-
-/**
- * Signale le premier mois où le solde épargne dépasse acc.ceiling.
- * Ignore les dépassements dus aux seuls intérêts ; identifie sinon les lignes Prevs responsables.
- */
-function checkCeiling(output, dateAbs, acc, prevMap, prevData) {
-  if (!acc.ceiling) return;
-
-  for (let i = 0; i < output.length; i++) {
-    if (output[i] === undefined) continue;
-
-    // Arrondi au centime : évite les faux positifs dus aux imprécisions flottantes
-    // accumulées lors de la capitalisation (ex. 10000.000000003 au lieu de 10000).
-    const balance = roundCent(output[i][0]);
-    if (balance <= acc.ceiling) continue;
-
-    const absMonth = dateAbs + i;
-
-    // Aucun versement Prevs ce mois → dépassement dû aux seuls intérêts → rien à faire
-    if (!prevMap.has(acc.id + '_' + absMonth)) return;
-
-    // Calcul du montant corrigé à inscrire dans Prevs.
-    // Dans epargneCalc : cumul += −totalPrevs + eps, donc :
-    //   balance_sans_prevs = balance + totalPrevs
-    //   valeur_corrigée    = balance_sans_prevs − plafond
-    let totalPrevs = 0;
-    for (const a of prevMap.get(acc.id + '_' + absMonth)) totalPrevs += a;
-    const corrected = roundCent(balance + totalPrevs - acc.ceiling);
-    const excess    = roundCent(balance - acc.ceiling);
-
-    const lines = findPrevLines(prevData, acc.id, absMonth);
-    if (lines.length === 0) return;
-
-    const mois   = absMonthToText(absMonth);
-    const lignes = lines.length === 1 ? `ligne ${lines[0]}` : `lignes ${lines.join(', ')}`;
-    const detail = lines.length === 1
-      ? `corriger ${lignes} (Prevs) → ${corrected} €`
-      : `nouveau total des versements pour ${lignes} (Prevs) → ${corrected} €`;
-
-    TABS.toast(
-      `${acc.id} dépasse ${acc.ceiling} € en ${mois} (+${excess} €) — ${detail}.`,
-      `Plafond ${acc.id} dépassé`,
-      20
-    );
-    return; // on signale uniquement le premier dépassement imputable à Prevs
-  }
 }
 
 /** Numéros de ligne (1-indexés) des entrées Prevs qui versent sur accId au mois absMonth. */
@@ -1709,14 +1491,10 @@ function getAllData() {
   const allAccounts  = JSON.parse(up.EB_ALL_ACCOUNTS || '[]');
   const shownUids    = JSON.parse(up.EB_SHOWN_ACCOUNTS || '[]');
   const shownAccounts = _getAccountBalances(allAccounts.filter(({ uid }) => shownUids.includes(uid)));
-  const forecast      = getCached('forecast', _getFullForecast);
-
-  _maybeAlertMammoth(forecast?.months?.find(m => m.isCurrent), up);
 
   return {
-    forecast,
-    rules:               getBudgetRules(),
-    options:             getTransOptions(),
+    forecastInputs:      _forecastInputs(),       // calcul du forecast côté client (AlfredForecast)
+    monthTransactions:   _getMonthTransactions(), // transactions du mois courant (formatage serveur)
     savingsProps:        getSavingsProps(undefined, up),
     shownAccounts,
     tasks:               getRevolutTasks(),
@@ -1732,10 +1510,20 @@ const MAMMOTH_DEFAULT_MSG =
   'côté finances. Si tu as un moment pour prendre des nouvelles, ça me ferait plaisir. 🙏';
 
 /**
+ * Web app : déclenche l'alerte « Mammouth » à partir du mois courant calculé côté client.
+ * Appelée en best-effort (fire-and-forget) à chaque chargement ; l'envoi de l'email et le
+ * ré-armement du flag restent serveur. Remplace l'ancien appel intégré à getAllData.
+ * @param {{budget:number, budgetInit:number}} cur  mois courant (forecast client)
+ */
+function maybeAlertMammoth(cur) {
+  _maybeAlertMammoth(cur, USER_PROPS.getProperties());
+}
+
+/**
  * « Le Mammouth » : prévient par email un proche lorsque la situation budgétaire
  * du mois courant devient difficile (météo Orage ou pire). Une seule alerte par
  * épisode : ré-armée dès que la situation repasse au-dessus du seuil.
- * Appelée dans getAllData ; n'échoue jamais (try/catch) pour ne pas casser le chargement.
+ * Appelée via l'endpoint maybeAlertMammoth() ; n'échoue jamais (try/catch).
  * @param {object|undefined} cur  mois courant du forecast ({ budget, budgetInit, ... })
  * @param {object} up             USER_PROPS.getProperties() (réutilisé, pas de relecture)
  */

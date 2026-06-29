@@ -95,13 +95,11 @@ describe('getCached / invalidateCache', () => {
     expect(calls).toBe(1);
   });
 
-  test('invalidateCache supprime forecast + budget_rules, garde le reste', () => {
+  test('invalidateCache supprime budget_rules, garde le reste (forecast non caché)', () => {
     const gg = loadAlfred();
-    gg._cacheStore.set('forecast', '1');
     gg._cacheStore.set('budget_rules', '1');
     gg._cacheStore.set('gemini_insight', '1');
     gg.invalidateCache();
-    expect(gg._cacheStore.has('forecast')).toBe(false);
     expect(gg._cacheStore.has('budget_rules')).toBe(false);
     expect(gg._cacheStore.has('gemini_insight')).toBe(true);
   });

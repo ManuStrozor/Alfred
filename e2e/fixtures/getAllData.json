@@ -1,36 +1,29 @@
 {
-  "forecast": {
-    "months": [
-      {
-        "month": "06/2026",
-        "isCurrent": true,
-        "isForecast": false,
-        "budget": 740,
-        "budgetInit": 1500,
-        "lep": 8000,
-        "la": 20000,
-        "csl": 0
-      }
+  "forecastInputs": {
+    "currentAbs": 24317,
+    "period": 0,
+    "budgetInit": 1500,
+    "cslName": "CSL",
+    "accounts": [
+      { "id": "LEP", "rate": 0.025, "ceiling": 10000 },
+      { "id": "LA",  "rate": 0.015, "ceiling": 22950 },
+      { "id": "CSL", "rate": 0,     "ceiling": null }
     ],
-    "periodText": "12 mois",
-    "monthTransactions": [
-      { "row": 2, "date": "05/06", "label": "Loyer",   "amount": -650, "rule": "Besoins", "category": "Loyer" },
-      { "row": 3, "date": "08/06", "label": "Courses", "amount": -110, "rule": "Besoins", "category": "Courses" },
-      { "row": 4, "date": "10/06", "label": "Resto",   "amount":  -45, "rule": "Envies",  "category": "Loisirs" }
-    ],
-    "cslName": "CSL"
+    "tranSums": { "24317": 740 },
+    "epargne": {
+      "LEP": { "initialAbs": 24317, "sums": { "24317": 8000 } },
+      "LA":  { "initialAbs": 24317, "sums": { "24317": 20000 } },
+      "CSL": { "initialAbs": 24317, "sums": { "24317": 0 } }
+    }
   },
-  "rules": [
-    { "label": "Besoins", "amount": 760 },
-    { "label": "Envies",  "amount": 300 },
-    { "label": "Epargne", "amount": 200 },
-    { "label": "Dette",   "amount": 100 },
-    { "label": "Reste",   "amount": 140 }
+  "monthTransactions": [
+    { "row": 2, "date": "01/06", "label": "Salaire", "amount": 2000, "rule": "",        "category": "" },
+    { "row": 3, "date": "05/06", "label": "Loyer",   "amount": -650, "rule": "Besoins", "category": "Loyer" },
+    { "row": 4, "date": "08/06", "label": "Courses", "amount": -110, "rule": "Besoins", "category": "Courses" },
+    { "row": 5, "date": "10/06", "label": "Resto",   "amount": -300, "rule": "Envies",  "category": "Loisirs" },
+    { "row": 6, "date": "12/06", "label": "PEA",     "amount": -200, "rule": "Epargne", "category": "Invest" },
+    { "row": 7, "date": "15/06", "label": "Credit",  "amount": -100, "rule": "Dette",   "category": "Pret" }
   ],
-  "options": {
-    "rules": ["Besoins", "Envies", "Epargne", "Dette"],
-    "categories": ["Loyer", "Courses", "Loisirs", "Transport"]
-  },
   "savingsProps": { "lep": 8000, "la": 20000, "csl": 0 },
   "shownAccounts": [],
   "tasks": [],
