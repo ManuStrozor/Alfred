@@ -103,3 +103,84 @@ describe('setAnyProp / deleteProp', () => {
     expect(g._propStore.has('TMP')).toBe(false);
   });
 });
+
+describe('setAnyProp / deleteProp — garde propriétaire (ScriptProperties partagées)', () => {
+  // userEmail() vaut '' dans le mock ; ALFRED_OWNER absent → non-propriétaire par défaut.
+  test('setAnyProp("script") refusé si non-propriétaire', () => {
+    const g = loadAlfred();
+    expect(() => g.setAnyProp('script', 'ALFRED_OWNER', 'evil@x')).toThrow(/propriétaire/);
+  });
+
+  test('deleteProp("script") refusé si non-propriétaire', () => {
+    const g = loadAlfred();
+    expect(() => g.deleteProp('script', 'GEMINI_API_KEY')).toThrow(/propriétaire/);
+  });
+
+  test('setAnyProp("script") autorisé pour le propriétaire', () => {
+    const g = loadAlfred();
+    g._propStore.set('ALFRED_OWNER', ''); // == userEmail() du mock → propriétaire
+    expect(() => g.setAnyProp('script', 'X', '1')).not.toThrow();
+    expect(g._propStore.get('X')).toBe('1');
+  });
+
+  test('source "user" reste autorisée sans être propriétaire', () => {
+    const g = loadAlfred();
+    expect(() => g.setAnyProp('user', 'TMP', '1')).not.toThrow();
+  });
+});
+
+describe('getSavingsProps — masquage des secrets', () => {
+  const byKey = g => Object.fromEntries(g.getSavingsProps().map(p => [p.key, p]));
+
+  test('GEMINI_API_KEY : valeur masquée, présence exposée', () => {
+    const g = loadAlfred();
+    g._propStore.set('GEMINI_API_KEY', 'secret-123');
+    expect(byKey(g).GEMINI_API_KEY.value).toBe('');
+    expect(byKey(g).GEMINI_API_KEY.configured).toBe(true);
+  });
+
+  test('EB_PRIVATE_KEY : valeur masquée, présence exposée', () => {
+    const g = loadAlfred();
+    g._propStore.set('EB_PRIVATE_KEY', 'PEM-DATA');
+    expect(byKey(g).EB_PRIVATE_KEY.value).toBe('');
+    expect(byKey(g).EB_PRIVATE_KEY.configured).toBe(true);
+  });
+
+  test('EB_PRIVATE_KEY absente → configured false', () => {
+    const g = loadAlfred();
+    expect(byKey(g).EB_PRIVATE_KEY.configured).toBe(false);
+  });
+
+  test('EB_APP_ID reste en clair (identifiant non sensible)', () => {
+    const g = loadAlfred();
+    g._propStore.set('EB_APP_ID', 'app-123');
+    expect(byKey(g).EB_APP_ID.value).toBe('app-123');
+    expect(byKey(g).EB_APP_ID.configured).toBeUndefined();
+  });
+});
+
+describe('deFormula — neutralisation des formules Sheets', () => {
+  const g = loadAlfred();
+  test.each(['=SUM(A1)', '+1', '-2', '@x'])('préfixe une apostrophe : %s', v => {
+    expect(g.deFormula(v)).toBe("'" + v);
+  });
+  test('texte normal inchangé', () => {
+    expect(g.deFormula('Courses Carrefour')).toBe('Courses Carrefour');
+  });
+  test('null/undefined → chaîne vide', () => {
+    expect(g.deFormula(null)).toBe('');
+    expect(g.deFormula(undefined)).toBe('');
+  });
+});
+
+describe('getUserPrefsJson — JSON sûr pour un <script> inline', () => {
+  test('échappe < > & et préserve la valeur au parsing', () => {
+    const g = loadAlfred();
+    g.setUserPref('mammothMessage', '</script>&<x>');
+    const json = g.getUserPrefsJson();
+    expect(json).not.toContain('<');
+    expect(json).not.toContain('>');
+    expect(json).toContain('\\u003c');
+    expect(JSON.parse(json).mammothMessage).toBe('</script>&<x>');
+  });
+});

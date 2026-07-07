@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <script>
-    window.ALFRED_PREFS = <?!= JSON.stringify(getUserPrefs()) ?>;
+    window.ALFRED_PREFS = <?!= getUserPrefsJson() ?>;
     document.documentElement.setAttribute('data-theme',
       window.ALFRED_PREFS.lightTheme ? 'light' : 'dark');
   </script>

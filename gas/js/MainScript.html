@@ -748,14 +748,16 @@
     }
     container.innerHTML = '<div class="task-list">'
       + tasks.map(t => `
-        <div class="task-item" id="task-${t.id}">
-          <input type="checkbox" id="chk-${t.id}" onchange="onCheckTask('${t.id}', this)">
+        <div class="task-item" id="task-${escHtml(t.id)}">
+          <input type="checkbox" class="task-check" id="chk-${escHtml(t.id)}" data-task-id="${escHtml(t.id)}">
           <div class="task-info">
             <div class="task-title">${escHtml(cleanTitle(t.title))}</div>
             ${t.notes ? `<div class="task-notes">${escHtml(t.notes)}</div>` : ''}
           </div>
         </div>`).join('')
       + '</div>';
+    container.querySelectorAll('.task-check').forEach(cb =>
+      cb.addEventListener('change', () => onCheckTask(cb.dataset.taskId, cb)));
   }
 
   function onCheckTask(taskId, checkbox) {
@@ -1143,7 +1145,7 @@
   function _connCheckCredentials() {
     const apply = props => {
       const hasAll = ['EB_APP_ID', 'EB_PRIVATE_KEY']
-        .every(k => props.some(p => p.key === k && p.value));
+        .every(k => props.some(p => p.key === k && (p.configured ?? !!p.value)));
       $('conn-skel').classList.add('is-hidden');
       $('conn-already-set').classList.toggle('is-hidden', !hasAll);
       $('conn-form').classList.toggle('is-hidden', hasAll);

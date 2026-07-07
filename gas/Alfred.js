@@ -66,6 +66,18 @@ function getUserProp(key, fallback = null) {
   return fallback;
 }
 
+/**
+ * Neutralise une injection de formule Google Sheets : préfixe une apostrophe si la
+ * chaîne commence par un caractère déclencheur (= + - @, tab, CR). L'apostrophe force
+ * le format texte, n'est pas affichée par Sheets ni relue par getValues().
+ * @param {*} s
+ * @returns {string}
+ */
+function deFormula(s) {
+  const str = String(s == null ? '' : s);
+  return /^[=+\-@\t\r]/.test(str) ? "'" + str : str;
+}
+
 // ----- Préférences utilisateur (UserProperties) ----------------------------------------------------------------------------------
 
 /**
@@ -99,6 +111,20 @@ function getUserPrefs() {
            : raw;
   }
   return out;
+}
+
+/**
+ * Web app : préférences UI sérialisées en JSON sûr à injecter dans un <script> inline.
+ * Échappe <, >, & et les séparateurs de ligne U+2028/U+2029 pour empêcher toute rupture
+ * de contexte <script> (self-XSS via une préférence en texte libre, ex. mammothMessage).
+ */
+function getUserPrefsJson() {
+  return JSON.stringify(getUserPrefs())
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 /** Web app : modifie une préférence UI (clé doit être listée dans ALFRED_PREF_DEFAULTS). */
@@ -140,33 +166,55 @@ function getSavingsProps(scriptProps, userProps) {
   Object.keys(userProps).filter(k => /^EB_/.test(k))
     .forEach(k => ebEntries.set(k, userProps[k]));
 
+  // Clés sensibles : ne JAMAIS renvoyer la valeur au client (déploiement access: ANYONE).
+  // On expose uniquement `configured` (présence) — le client n'en a pas besoin de plus
+  // (test de configuration EB ; l'insight Gemini est généré côté serveur).
+  const SENSITIVE = /^(GEMINI_|EB_PRIVATE_KEY$)/;
+
   return [
     ...savingsEntries,
     ...geminiEntries,
     ...[...ebEntries.entries()].map(([k, v]) => ({ key: k, value: v })),
-  ].sort((a, b) => a.key.localeCompare(b.key));
+  ]
+    .map(e => SENSITIVE.test(e.key) ? { key: e.key, value: '', configured: !!e.value } : e)
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+/** Web app : true si l'utilisateur courant est le propriétaire du script (ScriptProp ALFRED_OWNER). */
+function isOwner() {
+  return userEmail() === PROPS.getProperty('ALFRED_OWNER');
+}
+
+/**
+ * Garde-fou serveur : lève une erreur si l'appelant n'est pas le propriétaire.
+ * Indispensable car le Web App est déployé en `access: ANYONE` — le masquage UI
+ * côté client n'est PAS une barrière de sécurité.
+ */
+function assertOwner() {
+  if (!isOwner()) throw new Error('Accès refusé : action réservée au propriétaire.');
 }
 
 /** Web app : toutes les propriétés Script + User, avec source. */
 function getAllProps() {
-  const isOwner = userEmail() === PROPS.getProperty('ALFRED_OWNER');
   const up = USER_PROPS.getProperties();
   const entries = [
-    ...(isOwner ? Object.entries(PROPS.getProperties()).map(([key, value]) => ({ key, value, source: 'script' })) : []),
+    ...(isOwner() ? Object.entries(PROPS.getProperties()).map(([key, value]) => ({ key, value, source: 'script' })) : []),
     ...Object.entries(up).map(([key, value]) => ({ key, value, source: 'user' })),
   ];
   return entries.sort((a, b) => a.key.localeCompare(b.key));
 }
 
-/** Web app : modifie une propriété sans restriction de clé. */
+/** Web app : modifie une propriété. Les ScriptProperties (partagées) sont réservées au propriétaire. */
 function setAnyProp(source, key, value) {
+  if (source !== 'user') assertOwner();
   (source === 'user' ? USER_PROPS : PROPS).setProperty(key, String(value));
   invalidateCache();
   return true;
 }
 
-/** Web app : supprime une propriété. */
+/** Web app : supprime une propriété. Les ScriptProperties (partagées) sont réservées au propriétaire. */
 function deleteProp(source, key) {
+  if (source !== 'user') assertOwner();
   (source === 'user' ? USER_PROPS : PROPS).deleteProperty(key);
   invalidateCache();
   return true;
@@ -493,6 +541,8 @@ function _getClosingDates(bDate) {
  *             forecastInputs: object, monthTransactions: object[] }}
  */
 function paydayWeb(salary, balances) {
+  const sal = parseFloat(salary);
+  if (!Number.isFinite(sal)) throw new Error('Salaire invalide.');
   const bDate = BUD_DATE.getValue();
   if (!(bDate instanceof Date)) throw new Error('Date invalide en A3.');
 
@@ -501,7 +551,7 @@ function paydayWeb(salary, balances) {
   const { forecasted, toArchive, transTotal, prevsTotal } =
     _collectClosingInfo(closingYear, closingMonth);
   const { lep, la, csl } = _closingBalances(balances);
-  const diff  = roundCent(salary - forecasted);
+  const diff  = roundCent(sal - forecasted);
   const solde = roundCent(prevsTotal + transTotal + diff);
 
   _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lep, la, csl);
@@ -832,7 +882,7 @@ function _editResponse(withPrevs) {
 
 /** Web app : supprime la ligne Trans à l'index donné, puis renvoie de quoi recalculer le forecast. */
 function deleteTransactionByRow(rowIndex) {
-  if (!Number.isInteger(rowIndex) || rowIndex < 2) throw new Error('Index invalide : ' + rowIndex);
+  if (!Number.isInteger(rowIndex) || rowIndex < 2 || rowIndex > TRA_TAB.getLastRow()) throw new Error('Index invalide : ' + rowIndex);
   TRA_TAB.deleteRow(rowIndex);
   getForecast();
   return _editResponse();
@@ -840,11 +890,13 @@ function deleteTransactionByRow(rowIndex) {
 
 /** Web app : modifie une ligne Trans existante, recalcule et renvoie le forecast. */
 function editTransactionByRow(rowIndex, amount, date, label, rule, category) {
-  if (!Number.isInteger(rowIndex) || rowIndex < 2) throw new Error('Index invalide : ' + rowIndex);
+  if (!Number.isInteger(rowIndex) || rowIndex < 2 || rowIndex > TRA_TAB.getLastRow()) throw new Error('Index invalide : ' + rowIndex);
+  const amt = parseFloat(amount);
+  if (!Number.isFinite(amt)) throw new Error('Montant invalide.');
   const dateObj = new Date(date);
   if (isNaN(dateObj)) throw new Error('Date invalide.');
   TRA_TAB.getRange(rowIndex, 1, 1, 5).setValues([[
-    dateObj, parseFloat(amount), String(label || ''), String(rule || ''), String(category || ''),
+    dateObj, amt, deFormula(String(label || '')), String(rule || ''), String(category || ''),
   ]]);
   TRA_TAB.getRange(rowIndex, 1).setNumberFormat('dd/MM/yyyy');
   getForecast();
@@ -877,10 +929,13 @@ function _listFromValidation(tab, col) {
  * @returns {object} Soldes mis à jour
  */
 function addTransaction(amount, date, label, rule, category) {
-  const parts = date.split('-');
+  const amt = parseFloat(amount);
+  if (!Number.isFinite(amt)) throw new Error('Montant invalide.');
+  const parts = String(date).split('-');
   const d     = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+  if (isNaN(d)) throw new Error('Date invalide.');
   const newRow = TRA_TAB.getLastRow() + 1;
-  TRA_TAB.getRange(newRow, 1, 1, 5).setValues([[d, amount, label, rule || '', category || '']]);
+  TRA_TAB.getRange(newRow, 1, 1, 5).setValues([[d, amt, deFormula(String(label || '')), rule || '', category || '']]);
   getForecast();
   return _editResponse();
 }
@@ -942,7 +997,7 @@ function addPrevLine(data) {
 
 /** Web app : modifie une ligne Prevs existante et retourne le nouveau prévisionnel. */
 function editPrevLine(rowIndex, data) {
-  if (!Number.isInteger(rowIndex) || rowIndex < 2) throw new Error('Index invalide : ' + rowIndex);
+  if (!Number.isInteger(rowIndex) || rowIndex < 2 || rowIndex > PRE_TAB.getLastRow()) throw new Error('Index invalide : ' + rowIndex);
   PRE_TAB.getRange(rowIndex, 1, 1, 8).setValues([_prevRowData(data)]);
   _setPrevFormula(rowIndex);
   getForecast();
@@ -951,7 +1006,7 @@ function editPrevLine(rowIndex, data) {
 
 /** Web app : supprime une ligne Prevs et retourne le nouveau prévisionnel. */
 function deletePrevLine(rowIndex) {
-  if (!Number.isInteger(rowIndex) || rowIndex < 2) throw new Error('Index invalide : ' + rowIndex);
+  if (!Number.isInteger(rowIndex) || rowIndex < 2 || rowIndex > PRE_TAB.getLastRow()) throw new Error('Index invalide : ' + rowIndex);
   PRE_TAB.deleteRow(rowIndex);
   getForecast();
   return _editResponse(true);
@@ -1293,7 +1348,7 @@ function setupEnableBankingWeb() {
  */
 function _exchangeEnableBankingCode(code, state) {
   const expected = USER_PROPS.getProperty('EB_STATE');
-  if (expected && state !== expected) throw new Error('State mismatch — possible CSRF, import annulé.');
+  if (!expected || state !== expected) throw new Error('State mismatch — possible CSRF, import annulé.');
 
   const { json: body, raw } = _ebFetchJson(EB_API_SUB_ENDPOINT + '/sessions', {
     method: 'POST',
@@ -1472,7 +1527,7 @@ function _importRevolutCore() {
     const idx = existing.indexOf(key);
     if (idx !== -1) { existing.splice(idx, 1); continue; }
 
-    rows.push([new Date(date), amount, label, isDbit ? 'Envies' : '', isDbit ? 'Unknown' : '']);
+    rows.push([new Date(date), amount, deFormula(label), isDbit ? 'Envies' : '', isDbit ? 'Unknown' : '']);
   }
 
   if (rows.length === 0) return 0;

@@ -50,8 +50,8 @@ function mockBlock() {
 
 /** Rendu récursif d'un template avec ses params. */
 function render(content, params) {
-  // getUserPrefs() → prefs mock
-  content = content.replace(/<\?!=\s*JSON\.stringify\(getUserPrefs\(\)\)\s*\?>/g, prefsJson);
+  // getUserPrefsJson() (ou l'ancien JSON.stringify(getUserPrefs())) → prefs mock
+  content = content.replace(/<\?!=\s*(?:getUserPrefsJson\(\)|JSON\.stringify\(getUserPrefs\(\)\))\s*\?>/g, prefsJson);
 
   // includes([ 'a', 'b' ]) → fragments rendus (sans params)
   content = content.replace(/<\?!=\s*includes\(\[([\s\S]*?)\]\)\s*\?>/g, (_m, list) =>
