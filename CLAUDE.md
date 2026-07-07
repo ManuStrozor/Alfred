@@ -15,20 +15,7 @@ Toujours « Alfred » dans le code/messages. Répondre en **français**.
 
 ## Structure (`gas/` = rootDir clasp)
 
-```
-gas/
-├── Alfred.js          backend : endpoints + CRUD Sheets + forecast + Enable Banking
-├── appsscript.json    manifest (Advanced Service: Tasks v1)
-├── jsrsasign.js       lib JWT/RSA (Enable Banking)
-├── App.html           template principal (doGet→'App'), assemble via include()/includes([])
-├── Setup.html         page first-time (si pas de classeur configuré)
-├── pages/             Budget, Evaluate, Prevs
-├── modals/            modaux plein-écran
-├── js/                *.html (JS client SPA ~1900 l.)
-├── css/               *.html (CSS global)
-├── svg/               *.html (SVGs)
-└── img/               *.html (base64 images)
-```
+`Alfred.js` (backend) · `appsscript.json` (manifest, Tasks v1) · `jsrsasign.js` (JWT/RSA EB) · `App.html` (`doGet→'App'`) · `Setup.html` · `pages/` · `modals/` · `js/` (client SPA ~1900 l.) · `css/` · `svg/` · `img/`. **Arborescence détaillée : `README.md`.**
 
 Includes dans `App.html` : `include('css/App')`, `includes(['pages/Budget', …])`. Tout `_modal.ALL` doit avoir un `id="modal-<nom>"` inclus dans `App.html`.
 
@@ -80,6 +67,10 @@ Cache localStorage `alfred_gemini_cache` `{key, message, ts}`. Clé = `"MM/YYYY|
 - Pas de tests unitaires DOM client : le client est couvert par les e2e Playwright (`e2e/tests/*.spec.js`, harnais `e2e/build-harness.mjs` + mock `e2e/mock-gas.js` + fixtures `e2e/fixtures/`). Un module client de **math pure** peut toutefois être testé en Jest via `vm` (ex. `forecastClient.test.js` charge `gas/js/Forecast.html`).
 - `npm run check:client` (`scripts/check-client.mjs`) : garde-fou statique des `.html` client (`//` en chaîne, quotes échappées, caractères invisibles, syntaxe).
 - `vm.runInContext` non instrumenté → `test:cov` ne couvre que les helpers, pas `Alfred.js`. Coverage manuelle/fonctionnelle.
+
+## Agents & config Claude
+
+Sous-agents (`.claude/agents/`, actifs au redémarrage de Claude Code) : `gas-reviewer` (review `Alfred.js`), `e2e-author` (specs Playwright), `security-auditor` (audit sécu, lecture seule). Exploration → agent intégré `Explore`. Détail : `.claude/README.md`.
 
 ## Règles absolues
 
