@@ -896,7 +896,7 @@ function editTransactionByRow(rowIndex, amount, date, label, rule, category) {
   const dateObj = new Date(date);
   if (isNaN(dateObj)) throw new Error('Date invalide.');
   TRA_TAB.getRange(rowIndex, 1, 1, 5).setValues([[
-    dateObj, amt, deFormula(String(label || '')), String(rule || ''), String(category || ''),
+    dateObj, amt, deFormula(String(label || '')), deFormula(String(rule || '')), deFormula(String(category || '')),
   ]]);
   TRA_TAB.getRange(rowIndex, 1).setNumberFormat('dd/MM/yyyy');
   getForecast();
@@ -935,7 +935,7 @@ function addTransaction(amount, date, label, rule, category) {
   const d     = new Date(+parts[0], +parts[1] - 1, +parts[2]);
   if (isNaN(d)) throw new Error('Date invalide.');
   const newRow = TRA_TAB.getLastRow() + 1;
-  TRA_TAB.getRange(newRow, 1, 1, 5).setValues([[d, amt, deFormula(String(label || '')), rule || '', category || '']]);
+  TRA_TAB.getRange(newRow, 1, 1, 5).setValues([[d, amt, deFormula(String(label || '')), deFormula(String(rule || '')), deFormula(String(category || ''))]]);
   getForecast();
   return _editResponse();
 }

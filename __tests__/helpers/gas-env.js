@@ -28,16 +28,21 @@ const ALFRED_CODE = fs.readFileSync(
 function loadAlfred() {
   const noop = () => {};
   const nostr = () => '';
+  // Capture des écritures setValues (exposée via ctx._writes) pour les tests d'endpoints d'édition.
+  const writes = [];
   const mockRange = {
     getValue:        nostr,
     setValue:        noop,
     setFormula:      noop,
+    setNumberFormat: noop,
     setDataValidation: noop,
     getValues:       () => [['']],
+    setValues:       v => { writes.push(v); },
   };
+  let lastRow = 1; // configurable via ctx._setLastRow(n) pour les tests d'édition par index
   const mockSheet = {
     getRange:      () => mockRange,
-    getLastRow:    () => 1,
+    getLastRow:    () => lastRow,
     getLastColumn: () => 8,
     clearContent:  noop,
     setValues:     noop,
@@ -129,6 +134,8 @@ function loadAlfred() {
   ctx._mock       = mock;
   ctx._cacheStore = cacheStore;
   ctx._propStore  = propStore;
+  ctx._writes     = writes;
+  ctx._setLastRow = n => { lastRow = n; };
   ctx._setFetch   = fn => { _fetchImpl = fn; };
 
   vm.createContext(ctx);
