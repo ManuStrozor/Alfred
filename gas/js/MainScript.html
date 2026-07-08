@@ -27,7 +27,7 @@
     budget: 0, budgetInit: 0
   };
 
-  const _cache = { cur: null, rules: null, props: null };
+  const _cache = { cur: null, rules: null, props: null, balances: null, balancesLoaded: false };
 
   const _trans = { items: [], editingRow: null };
 
@@ -83,9 +83,10 @@
       'prev-line', 'charges', 'taches',
       'outils', 'comptes', 'parametres',
       'confidentialite', 'interface', 'systeme',
-      'profil'
+      'profil', 'import'
     ],
   };
+  const _import = { candidates: [] };
 
   const _swipe = {
     PX: 96,
@@ -497,8 +498,17 @@
     _notifyMammoth(forecast);
     renderDonut(_computeRules()); // répartition calculée client (après applyForecast → _trans.items prêtes)
 
-    if (shownAccounts) _cache.balances = shownAccounts;
-    renderLinkedAccountCards(shownAccounts);
+    // getAllData ne renvoie plus les soldes (appel bancaire déporté) : on réutilise ceux déjà connus
+    // pour éviter un skeleton à chaque refresh ; getAccountBalances() les rafraîchit ensuite.
+    if (shownAccounts) {
+      const known = _cache.balances || [];
+      const merged = shownAccounts.map(a => {
+        const prev = known.find(k => k.uid === a.uid);
+        return prev ? { ...a, balance: prev.balance } : a;
+      });
+      _cache.balances = merged;
+      renderLinkedAccountCards(merged, !_cache.balancesLoaded);
+    }
 
     if (tasks) renderTasks(tasks);
     if (prevs) {
@@ -508,31 +518,141 @@
     _ptrFinish();
   }
 
-  function renderLinkedAccountCards(accounts) {
+  // loading = soldes pas encore récupérés (appel getAccountBalances en cours) → skeleton au lieu de '—'.
+  function renderLinkedAccountCards(accounts, loading) {
     const container = $('linked-account-cards');
     container.innerHTML = '';
     accounts.forEach(a => {
       const card = document.createElement('div');
       card.className = 'card card-account';
+      const balanceHtml = loading && a.balance === null
+        ? '<span class="skeleton skel-box" style="height:2rem;width:70%;display:inline-block"></span>'
+        : `<div class="balance-hero ${(a.balance !== null && a.balance < 0) ? 'negative' : ''}">
+             ${a.balance !== null ? fmt(a.balance) : '<span class="balance-na">—</span>'}
+           </div>`;
       card.innerHTML = `
         <div class="card-title">${escHtml(a.name || 'Compte')}</div>
         <div class="account-name-label">${escHtml(a.currency)}</div>
-        <div class="balance-hero ${(a.balance !== null && a.balance < 0) ? 'negative' : ''}">
-          ${a.balance !== null ? fmt(a.balance) : '<span class="balance-na">—</span>'}
-        </div>
+        ${balanceHtml}
       `;
       container.appendChild(card);
     });
     container.classList.add('is-visible');
   }
 
-  /** Applique le résultat d'un import Revolut. */
-  function _onImportSuccess(result) {
-    _applyAllData(result);
-    if (_modal.stack.includes('month-trans')) _renderMonthTrans();
-    showToast(result.imported === 0
-      ? 'Rien à importer'
-      : `✅ ${result.imported} transaction(s) Revolut importée(s)`);
+  /* ── Import Revolut : validation avant écriture ──────────────────
+     Le scan (previewRevolutImport) ne fait qu'analyser ; l'écriture (confirmRevolutImport)
+     n'a lieu qu'après validation dans le modal. Une transac non importée reste absente de
+     Trans → re-scannée au prochain démarrage.                                            */
+  function _updateImportBadge(n) {
+    const b = $('recent-trans-badge');
+    if (!b) return;
+    b.textContent = n;
+    b.classList.toggle('is-visible', n > 0);
+  }
+
+  function _isoToDisplay(iso) {
+    return iso && iso.length >= 10 ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : String(iso || '');
+  }
+
+  function _ruleOptionsHtml(selected) {
+    return ['<option value="">—</option>']
+      .concat(RULES.map(r => `<option value="${escHtml(r)}"${r === selected ? ' selected' : ''}>${escHtml(r)}</option>`))
+      .join('');
+  }
+
+  function _catOptionsHtml(selected) {
+    let html = '<option value="">—</option>';
+    for (const [theme, cats] of Object.entries(CATEGORIES)) {
+      html += `<optgroup label="${escHtml(theme)}">`;
+      html += cats.map(c => `<option value="${escHtml(c)}"${c === selected ? ' selected' : ''}>${escHtml(c)}</option>`).join('');
+      html += '</optgroup>';
+    }
+    return html;
+  }
+
+  function renderImportList() {
+    const container = $('import-list');
+    const items = _import.candidates;
+    if (!items.length) {
+      container.innerHTML = '<div class="empty-state">🎉 Aucune nouvelle transaction</div>';
+      return;
+    }
+    container.innerHTML = items.map(c => `
+      <div class="import-item" data-key="${escHtml(c.key)}">
+        <input type="checkbox" class="import-check" checked aria-label="Importer">
+        <div class="import-info">
+          <div class="import-line">
+            <span class="import-date">${escHtml(_isoToDisplay(c.isoDate))}</span>
+            <span class="import-amount ${c.amount >= 0 ? 'positive' : ''}">${fmt(c.amount)}</span>
+          </div>
+          <div class="import-label">${escHtml(c.label, true)}</div>
+          <div class="import-selects">
+            <select class="import-rule form-input">${_ruleOptionsHtml(c.rule)}</select>
+            <select class="import-category form-input">${_catOptionsHtml(c.category)}</select>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  function openImportModal() {
+    renderImportList();
+    _openModal('import');
+  }
+
+  /** Scan en fond au démarrage (silencieux si rien) : pastille + notification. */
+  function _scanImport() {
+    runner('Import', res => {
+      _import.candidates = (res && res.candidates) || [];
+      _updateImportBadge(_import.candidates.length);
+      if (_import.candidates.length > 0) {
+        showToast(`${_import.candidates.length} nouvelle(s) transaction(s) à valider`);
+      }
+    }, _ => {}).previewRevolutImport();
+  }
+
+  /** Import manuel : scanne puis ouvre toujours le modal (message si aucune nouvelle). */
+  function _manualImport(btn) {
+    const restore = _spinBtn(btn);
+    runner('Import', res => {
+      restore();
+      _import.candidates = (res && res.candidates) || [];
+      _updateImportBadge(_import.candidates.length);
+      openImportModal();
+    }, restore).previewRevolutImport();
+  }
+
+  function _confirmImport(btn) {
+    const selections = [...$All('#import-list .import-item')]
+      .filter(el => el.querySelector('.import-check').checked)
+      .map(el => ({
+        key:      el.dataset.key,
+        rule:     el.querySelector('.import-rule').value,
+        category: el.querySelector('.import-category').value,
+      }));
+    if (!selections.length) { showToast('Aucune transaction sélectionnée'); return; }
+    const restore = _spinBtn(btn);
+    runner('Import', result => {
+      restore();
+      _import.candidates = [];
+      _updateImportBadge(0);
+      _applyAllData(result);
+      if (_modal.stack.includes('month-trans')) _renderMonthTrans();
+      closeAll();
+      showToast(`✅ ${result.imported} transaction(s) importée(s)`);
+    }, restore).confirmRevolutImport(selections);
+  }
+
+  // Soldes Enable Banking chargés à part (appel réseau bancaire) pour ne pas bloquer le premier rendu.
+  function _loadBalances() {
+    const done = accounts => {
+      _cache.balancesLoaded = true;
+      // [] = aucun compte affiché ou erreur : réutilise la liste connue et sort juste du skeleton.
+      const list = (accounts && accounts.length) ? accounts : (_cache.balances || []);
+      _cache.balances = list;
+      renderLinkedAccountCards(list, false);
+    };
+    runner('Soldes', done, _ => done([])).getAccountBalances();
   }
 
   function loadAppData() {
@@ -553,14 +673,13 @@
       _ptrFinish();
     };
 
-    if (STATE.autoImportRevolut) {
-      runner('Auto-import', _onImportSuccess, _ => {
-        runner('Chargement', _applyAllData, onLoadError).getAllData();
-      }).importRevolutTransactionsWeb();
-      return;
-    }
+    // Soldes bancaires en parallèle : le premier rendu n'attend jamais la banque.
+    _loadBalances();
 
     runner('Chargement', _applyAllData, onLoadError).getAllData();
+
+    // Import Revolut proposé en fond (non bloquant) : pastille + modal de validation.
+    if (STATE.autoImportRevolut) _scanImport();
   }
 
   /* ══ Donut chart ═══════════════════════════════════════════════════
@@ -1501,14 +1620,14 @@
     };
   })();
 
-  $('btn-import-revolut').addEventListener('click', e => {
-    const btn = e.target;
-    const restore = _spinBtn(btn);
-    runner('Import transactions', result => {
-      restore();
-      _onImportSuccess(result);
-    }, restore).importRevolutTransactionsWeb();
+  // Import Revolut : le bouton (comme la pastille) ouvre le modal de validation, plus d'écriture directe.
+  $('btn-import-revolut').addEventListener('click', e => _manualImport(e.target));
+  $('recent-trans-badge').addEventListener('click', openImportModal);
+  $('recent-trans-badge').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openImportModal(); }
   });
+  $('btn-import-confirm').addEventListener('click', e => _confirmImport(e.target));
+  _bindModal('import');
 
   /* ── Transaction modal ───────────────────────────────────────── */
   $('tx-date').value = new Date().toISOString().slice(0, 10);

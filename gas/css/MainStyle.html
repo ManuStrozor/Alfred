@@ -239,6 +239,37 @@
   }
   .card-account .balance-hero { font-size: 2rem; }
 
+  /* ── Modal validation import Revolut ──────────────────────────── */
+  .import-hint {
+    font-size: .82rem;
+    color: var(--clr-muted);
+    margin: 4px 0 14px;
+  }
+  .import-list { display: flex; flex-direction: column; gap: 12px; }
+  .import-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(var(--surface-rgb), .04);
+  }
+  .import-check { margin-top: 4px; flex-shrink: 0; width: 18px; height: 18px; }
+  .import-info { flex: 1; min-width: 0; }
+  .import-line { display: flex; justify-content: space-between; gap: 10px; }
+  .import-date { font-size: .78rem; color: var(--clr-muted); }
+  .import-amount { font-weight: 700; font-family: var(--font-mono); }
+  .import-amount.positive { color: var(--clr-primary); }
+  .import-label {
+    margin: 2px 0 8px;
+    font-size: .9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .import-selects { display: flex; gap: 8px; }
+  .import-selects .form-input { flex: 1; min-width: 0; }
+
   /* ── Donut chart ──────────────────────────────────────────────── */
   .donut-wrap {
     display: flex;

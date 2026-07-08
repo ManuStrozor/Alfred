@@ -1,0 +1,14 @@
+<!-- Modal validation import Revolut -->
+<div id="modal-import" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal-sheet modal-sheet--large">
+
+    <?!= include('items/modal-header', { name: 'import', title: 'Transactions à valider' }) ?>
+
+    <p class="import-hint">Coche les transactions à importer et ajuste règle / catégorie si besoin.</p>
+
+    <div class="import-list" id="import-list"></div>
+
+    <button type="button" id="btn-import-confirm" class="btn btn-primary">Valider la sélection</button>
+
+  </div>
+</div>

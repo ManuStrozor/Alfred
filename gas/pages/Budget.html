@@ -25,7 +25,10 @@
 
   <!-- Transactions récentes -->
   <div class="card" id="card-recent-trans">
-    <div class="card-title">Transactions récentes</div>
+    <div class="card-title">
+      <span>Transactions récentes</span>
+      <span class="task-badge" id="recent-trans-badge" role="button" tabindex="0" title="Transactions à valider"></span>
+    </div>
     <ul class="month-trans-list" id="recent-trans-list">
       <li class="skeleton skel-box is-hidden"></li>
       <?!= include('items/transaction-item') ?>

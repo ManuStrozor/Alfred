@@ -1481,12 +1481,17 @@ function setShownAccounts(uids) {
   return _getAccountBalances(allAccounts.filter(({ uid }) => uids.includes(uid)));
 }
 
+// Règles budgétaires valides (whitelist anti-injection pour confirmRevolutImport). '' = crédit non catégorisé.
+const REVOLUT_RULES = ['Besoins', 'Envies', 'Epargne', 'Dette', ''];
+const EB_IMPORT_CACHE_KEY = 'EB_IMPORT_CANDIDATES';
+
 /**
- * Importe les transactions EUR du mois en cours depuis Enable Banking → Trans.
+ * Récupère les transactions EUR du mois en cours depuis Enable Banking et retourne les
+ * candidates à l'import (celles absentes de Trans), SANS rien écrire.
  * Déduplique par (date|montant|libellé) via consommation de liste pour gérer les doublons légitimes.
+ * @returns {{key:string,isoDate:string,amount:number,label:string,rule:string,category:string}[]}
  */
-/** Coeur de l'import Revolut : retourne le nombre importé. Throws en cas d'erreur. */
-function _importRevolutCore() {
+function _scanRevolutCandidates() {
   const accountId = USER_PROPS.getProperty('EB_ACCOUNT_ID');
   if (!accountId) throw new Error('Aucune connexion à vos comptes.');
 
@@ -1512,40 +1517,109 @@ function _importRevolutCore() {
       )
     : [];
 
-  const rows = [];
+  const candidates = [];
 
   for (const t of transactions) {
     if (!t.transaction_amount) continue;
-    const isDbit  = t.credit_debit_indicator === 'DBIT';
-    const date   = t.booking_date;
-    const raw    = parseFloat(t.transaction_amount.amount);
-    const amount  = isDbit ? -raw : raw;
-    const xtorName = isDbit ? t.creditor.name : t.debtor.name;
-    const label   = (t.remittance_information?.[0] || xtorName || t.entry_reference).trim();
-    const key     = date + '|' + amount + '|' + label.toLowerCase();
+    const isDbit    = t.credit_debit_indicator === 'DBIT';
+    const date      = t.booking_date;
+    const rawAmount = parseFloat(t.transaction_amount.amount);
+    const amount    = isDbit ? -rawAmount : rawAmount;
+    const xtorName  = isDbit ? t.creditor.name : t.debtor.name;
+    const label     = (t.remittance_information?.[0] || xtorName || t.entry_reference).trim();
+    const key       = date + '|' + amount + '|' + label.toLowerCase();
 
     const idx = existing.indexOf(key);
     if (idx !== -1) { existing.splice(idx, 1); continue; }
 
-    rows.push([new Date(date), amount, deFormula(label), isDbit ? 'Envies' : '', isDbit ? 'Unknown' : '']);
+    candidates.push({
+      key:      String(candidates.length), // identifiant de sélection stable (position dans le scan)
+      isoDate:  date,
+      amount:   roundCent(amount),
+      label:    deFormula(label),
+      rule:     isDbit ? 'Envies' : '',
+      category: isDbit ? 'Unknown' : '',
+    });
   }
+  return candidates;
+}
 
-  if (rows.length === 0) return 0;
-
+/** Écrit des lignes [date, montant, label, règle, catégorie] dans Trans et rafraîchit le forecast. */
+function _commitRevolutRows(rows) {
   const firstNewRow = TRA_TAB.getLastRow() + 1;
   TRA_TAB.getRange(firstNewRow, 1, rows.length, 5).setValues(rows);
   TRA_TAB.getRange(firstNewRow, 1, rows.length, 1).setNumberFormat('dd/MM/yyyy');
   invalidateCache();
   getForecast();
-  return rows.length;
 }
 
-/** Web app : toutes les données initiales en un seul appel. */
+/** Coeur de l'import Revolut (import direct, toutes les candidates) : retourne le nombre importé. Throws en cas d'erreur. */
+function _importRevolutCore() {
+  const candidates = _scanRevolutCandidates();
+  if (candidates.length === 0) return 0;
+  _commitRevolutRows(candidates.map(c => [new Date(c.isoDate), c.amount, c.label, c.rule, c.category]));
+  return candidates.length;
+}
+
+/**
+ * Web app : prévisualise l'import Revolut (scan non bloquant) sans rien écrire.
+ * Mémorise les candidates dans le cache utilisateur pour que confirmRevolutImport() écrive
+ * exactement ce qui a été prévisualisé (le client ne renvoie que key + règle/catégorie).
+ * Best-effort : n'échoue jamais (→ { candidates: [] }) afin de ne pas casser le démarrage.
+ * @returns {{ candidates: object[] }}
+ */
+function previewRevolutImport() {
+  try {
+    const candidates = _scanRevolutCandidates();
+    try { CacheService.getUserCache().put(EB_IMPORT_CACHE_KEY, JSON.stringify(candidates), 600); } catch (_) {}
+    return { candidates };
+  } catch (_) {
+    return { candidates: [] };
+  }
+}
+
+/**
+ * Web app : importe les candidates sélectionnées dans le modal de validation.
+ * @param {{key:string, rule:string, category:string}[]} selections  lignes cochées + règle/catégorie choisies
+ * Sécurité : date/montant/libellé proviennent du serveur (candidates mémorisées), jamais du client.
+ * La règle est bornée à REVOLUT_RULES ; label & catégorie passent par deFormula (anti-injection formule).
+ * @returns {{ imported:number, ...getAllData() }}
+ */
+function confirmRevolutImport(selections) {
+  if (!Array.isArray(selections) || selections.length === 0) return { imported: 0, ...getAllData() };
+
+  const cached = CacheService.getUserCache().get(EB_IMPORT_CACHE_KEY);
+  const candidates = cached ? JSON.parse(cached) : _scanRevolutCandidates(); // fallback : cache expiré
+  const byKey = {};
+  candidates.forEach(c => { byKey[c.key] = c; });
+
+  const rows = [];
+  for (const sel of selections) {
+    const c = byKey[sel && sel.key];
+    if (!c) continue;
+    const rule = REVOLUT_RULES.includes(sel.rule) ? sel.rule : '';
+    rows.push([new Date(c.isoDate), c.amount, deFormula(c.label), rule, deFormula(String(sel.category || ''))]);
+  }
+
+  if (rows.length === 0) return { imported: 0, ...getAllData() };
+
+  _commitRevolutRows(rows);
+  try { CacheService.getUserCache().remove(EB_IMPORT_CACHE_KEY); } catch (_) {}
+  return { imported: rows.length, ...getAllData() };
+}
+
+/**
+ * Web app : toutes les données initiales en un seul appel.
+ * NB : les soldes Enable Banking ne sont PAS récupérés ici (appel réseau bancaire lent) —
+ * les cartes de comptes sont renvoyées sans solde (`balance: null`) et remplies ensuite via
+ * l'endpoint dédié getAccountBalances(), hors du chemin critique de démarrage.
+ */
 function getAllData() {
   const up           = USER_PROPS.getProperties();
   const allAccounts  = JSON.parse(up.EB_ALL_ACCOUNTS || '[]');
   const shownUids    = JSON.parse(up.EB_SHOWN_ACCOUNTS || '[]');
-  const shownAccounts = _getAccountBalances(allAccounts.filter(({ uid }) => shownUids.includes(uid)));
+  const shownAccounts = allAccounts.filter(({ uid }) => shownUids.includes(uid))
+    .map(a => ({ ...a, balance: null }));
 
   return {
     forecastInputs:      _forecastInputs(),       // calcul du forecast côté client (AlfredForecast)
@@ -1555,6 +1629,21 @@ function getAllData() {
     tasks:               getRevolutTasks(),
     prevs:               getPrevLines(),
   };
+}
+
+/**
+ * Web app : soldes des comptes affichés (appel réseau Enable Banking).
+ * Séparé de getAllData() pour ne pas bloquer le premier rendu ; appelé en parallèle côté client.
+ * Best-effort : renvoie [] si aucune connexion / erreur (les cartes gardent leur solde à null).
+ */
+function getAccountBalances() {
+  try {
+    const allAccounts = JSON.parse(USER_PROPS.getProperty('EB_ALL_ACCOUNTS') || '[]');
+    const shownUids   = JSON.parse(USER_PROPS.getProperty('EB_SHOWN_ACCOUNTS') || '[]');
+    return _getAccountBalances(allAccounts.filter(({ uid }) => shownUids.includes(uid)));
+  } catch (_) {
+    return [];
+  }
 }
 
 // Seuil météo « Orage » (cf. WEATHER côté client) : pire niveau atteignable sans

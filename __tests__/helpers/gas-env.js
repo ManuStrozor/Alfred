@@ -93,10 +93,12 @@ function loadAlfred() {
   const mockCacheObj = {
     get:       key        => cacheStore.get(key) ?? null,
     put:       (key, val) => { cacheStore.set(key, val); },
+    remove:    key        => { cacheStore.delete(key); },
     removeAll: keys       => { (keys || []).forEach(k => cacheStore.delete(k)); },
   };
-  // UrlFetchApp — implémentation remplaçable via ctx._setFetch(fn)
-  let _fetchImpl = () => ({ getResponseCode: () => 200, getContentText: () => '{}' });
+  // UrlFetchApp — implémentations remplaçables via ctx._setFetch(fn) / ctx._setFetchAll(fn)
+  let _fetchImpl    = () => ({ getResponseCode: () => 200, getContentText: () => '{}' });
+  let _fetchAllImpl = reqs => (reqs || []).map(() => ({ getResponseCode: () => 200, getContentText: () => '{}' }));
 
   const ctx = {
     SpreadsheetApp: {
@@ -120,8 +122,12 @@ function loadAlfred() {
     },
     CacheService: {
       getScriptCache: () => mockCacheObj,
+      getUserCache:   () => mockCacheObj,
     },
-    UrlFetchApp: { fetch: (...args) => _fetchImpl(...args) },
+    UrlFetchApp: {
+      fetch:    (...args) => _fetchImpl(...args),
+      fetchAll: (...args) => _fetchAllImpl(...args),
+    },
     Tasks: { Tasks: { insert: noop } },
     Logger:      { log: noop },
     // Stub minimal : évite d'injecter le vrai console (handles ouverts → warning Jest)
@@ -137,6 +143,7 @@ function loadAlfred() {
   ctx._writes     = writes;
   ctx._setLastRow = n => { lastRow = n; };
   ctx._setFetch   = fn => { _fetchImpl = fn; };
+  ctx._setFetchAll = fn => { _fetchAllImpl = fn; };
 
   vm.createContext(ctx);
   vm.runInContext(ALFRED_CODE, ctx);
