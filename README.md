@@ -225,18 +225,21 @@ Pipeline de calcul (forecast)
 
 Endpoints Web App (google.script.run)
   getAllData()               ← tout en un appel (forecast, rules, options, savingsProps,
-                                comptes liés, tasks, prevs) + alerte Mammouth
+                                comptes liés SANS solde, tasks, prevs) — sans appel réseau
+  getAccountBalances()       ← soldes Enable Banking (appel réseau), chargés en parallèle
   addTransaction / editTransactionByRow / deleteTransactionByRow
   getPrevLines / addPrevLine / editPrevLine / deletePrevLine
   getBudgetRules / getTransOptions / paydayWeb(salary)
   getGeminiInsight() · getRevolutTasks / completeTask
-  importRevolutTransactionsWeb()  ← _importRevolutCore() puis getAllData()
+  previewRevolutImport()     ← scan non bloquant → candidates (cache) ; aucune écriture
+  confirmRevolutImport(sel)  ← écrit la sélection validée puis getAllData()
   _maybeAlertMammoth()       ← email best-effort à un proche (météo Orage)
 
 Enable Banking (PSD2)
   registerEnableBankingApp() · activateAppEB() · setupEnableBankingWeb()
   _exchangeEnableBankingCode() · _storeAccounts() · refreshLinkedAccountsWeb()
   getLinkedAccounts / setShownAccounts · _getAccountBalances()
+  _scanRevolutCandidates() · _commitRevolutRows()  ← scan/écriture import (cf. preview/confirm)
   _enableBankingHeaders() · _ebFetchJson() · _extractAccounts()
 
 Sheets (menu classique)

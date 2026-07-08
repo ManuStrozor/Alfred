@@ -1553,14 +1553,6 @@ function _commitRevolutRows(rows) {
   getForecast();
 }
 
-/** Coeur de l'import Revolut (import direct, toutes les candidates) : retourne le nombre importé. Throws en cas d'erreur. */
-function _importRevolutCore() {
-  const candidates = _scanRevolutCandidates();
-  if (candidates.length === 0) return 0;
-  _commitRevolutRows(candidates.map(c => [new Date(c.isoDate), c.amount, c.label, c.rule, c.category]));
-  return candidates.length;
-}
-
 /**
  * Web app : prévisualise l'import Revolut (scan non bloquant) sans rien écrire.
  * Mémorise les candidates dans le cache utilisateur pour que confirmRevolutImport() écrive
@@ -1705,12 +1697,6 @@ function _maybeAlertMammoth(cur, up) {
   } catch (e) {
     // Alerte best-effort : ne jamais interrompre getAllData.
   }
-}
-
-/** Web app : import PUIS toutes les données actualisées (forecast cohérent post-import). */
-function importRevolutTransactionsWeb() {
-  const imported = _importRevolutCore();
-  return { imported, ...getAllData() };
 }
 
 /** Arrondit une valeur au centime. */
