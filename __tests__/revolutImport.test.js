@@ -184,3 +184,55 @@ describe('Suggestion règle/catégorie depuis l\'historique', () => {
     expect(hints.get('vire')).toBeUndefined();
   });
 });
+
+describe('Suggestion par montant (repli quand le marchand est inconnu)', () => {
+  // Lignes au format feuille : [date, montant, label, règle, catégorie].
+  const rowA = (amount, label, rule, category) => [null, amount, label, rule, category];
+
+  test('montant catégorisé plus de 3 fois → proposé', () => {
+    const g = loadAlfred();
+    const rows = [
+      rowA(-9.99, 'Marchand1', 'Envies', 'Abonnement'),
+      rowA(-9.99, 'Marchand2', 'Envies', 'Abonnement'),
+      rowA(-9.99, 'Marchand3', 'Envies', 'Abonnement'),
+      rowA(-9.99, 'Marchand4', 'Envies', 'Abonnement'),
+    ];
+    expect(g._indexAmountHints(rows).get(-9.99)).toEqual({ rule: 'Envies', category: 'Abonnement' });
+  });
+
+  test('montant vu exactement 3 fois → pas de proposition (seuil strict > 3)', () => {
+    const g = loadAlfred();
+    const rows = [
+      rowA(-9.99, 'A', 'Envies', 'Abonnement'),
+      rowA(-9.99, 'B', 'Envies', 'Abonnement'),
+      rowA(-9.99, 'C', 'Envies', 'Abonnement'),
+    ];
+    expect(g._indexAmountHints(rows).get(-9.99)).toBeUndefined();
+  });
+
+  test('_scanRevolutCandidates : libellé prioritaire, sinon repli sur le montant fréquent', () => {
+    const g = loadAlfred();
+    g._enableBankingHeaders = () => ({});
+    g.Utilities = { formatDate: () => '2025-07-01' };
+    g._propStore.set('EB_ACCOUNT_ID', 'acc1');
+    // Historique : 'IKEA' → Besoins/Entretien ; montant -9.99 vu 4× → Envies/Abonnement.
+    g._readCatRows = () => [
+      [null, -50, 'IKEA', 'Besoins', 'Entretien & Travaux'],
+      [null, -9.99, 'A', 'Envies', 'Abonnement'],
+      [null, -9.99, 'B', 'Envies', 'Abonnement'],
+      [null, -9.99, 'C', 'Envies', 'Abonnement'],
+      [null, -9.99, 'D', 'Envies', 'Abonnement'],
+    ];
+    g._setFetch(() => ({
+      getResponseCode: () => 200,
+      getContentText:  () => JSON.stringify({ transactions: [
+        { transaction_amount: { amount: '50' }, credit_debit_indicator: 'DBIT', booking_date: '2025-07-01', creditor: { name: 'IKEA' }, debtor: { name: '' }, remittance_information: ['IKEA'], entry_reference: 'r1' },
+        { transaction_amount: { amount: '9.99' }, credit_debit_indicator: 'DBIT', booking_date: '2025-07-01', creditor: { name: 'Nouveau' }, debtor: { name: '' }, remittance_information: ['Nouveau'], entry_reference: 'r2' },
+      ] }),
+    }));
+
+    const c = g._scanRevolutCandidates();
+    expect(c[0]).toMatchObject({ label: 'IKEA', rule: 'Besoins', category: 'Entretien & Travaux' }); // par libellé
+    expect(c[1]).toMatchObject({ label: 'Nouveau', rule: 'Envies', category: 'Abonnement' });        // repli montant
+  });
+});

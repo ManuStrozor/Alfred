@@ -1484,6 +1484,9 @@ function setShownAccounts(uids) {
 // Règles budgétaires valides (whitelist anti-injection pour confirmRevolutImport). '' = crédit non catégorisé.
 const REVOLUT_RULES = ['Besoins', 'Envies', 'Epargne', 'Dette', ''];
 const EB_IMPORT_CACHE_KEY = 'EB_IMPORT_CANDIDATES';
+// Repli par montant : on ne suggère via le montant que s'il a été catégorisé STRICTEMENT plus
+// de fois que ce seuil dans l'historique (> 3 = ≥ 4 occurrences ⇒ sans doute un achat récurrent).
+const AMOUNT_HINT_MIN_COUNT = 3;
 
 /**
  * Normalise un libellé pour le rapprochement de suggestions : minuscules, bords rognés,
@@ -1508,33 +1511,48 @@ function _readCatRows(tab) {
  * la plus récente → passer Archives puis Trans). Les lignes sans règle ni catégorie sont ignorées.
  * @returns {Map<string, {rule:string, category:string}>}
  */
-function _indexCategoryHints(rows) {
-  const byLabel = new Map(); // normLabel -> Map(combo -> { count, seq, rule, category })
+function _indexHints(rows, keyOf, minCount) {
+  const byKey = new Map(); // key -> { total, combos: Map(combo -> { count, seq, rule, category }) }
   let seq = 0;
   for (const r of rows) {
-    const label = _normLabel(r[2]);
-    if (!label) continue;
+    const key = keyOf(r);
+    if (key === null || key === undefined || key === '') continue;
     const rule     = String(r[3] || '').trim();
     const category = String(r[4] || '').trim();
     if (!rule && !category) continue;
-    const combo = rule + ' ' + category;
-    let combos = byLabel.get(label);
-    if (!combos) { combos = new Map(); byLabel.set(label, combos); }
-    const entry = combos.get(combo) || { count: 0, seq: 0, rule, category };
+    const combo = rule + '\u0000' + category;
+    let bucket = byKey.get(key);
+    if (!bucket) { bucket = { total: 0, combos: new Map() }; byKey.set(key, bucket); }
+    bucket.total++;
+    const entry = bucket.combos.get(combo) || { count: 0, seq: 0, rule, category };
     entry.count++;
     entry.seq = ++seq; // ordre de lecture → récence approximative
-    combos.set(combo, entry);
+    bucket.combos.set(combo, entry);
   }
 
   const best = new Map();
-  for (const [label, combos] of byLabel) {
+  for (const [key, bucket] of byKey) {
+    if (bucket.total <= (minCount || 0)) continue;
     let win = null;
-    for (const e of combos.values()) {
+    for (const e of bucket.combos.values()) {
       if (!win || e.count > win.count || (e.count === win.count && e.seq > win.seq)) win = e;
     }
-    best.set(label, { rule: win.rule, category: win.category });
+    best.set(key, { rule: win.rule, category: win.category });
   }
   return best;
+}
+
+/** Suggestions par libellé exact normalisé (toutes fréquences retenues). */
+function _indexCategoryHints(rows) {
+  return _indexHints(rows, r => _normLabel(r[2]), 0);
+}
+
+/** Suggestions par montant exact, uniquement s'il a été catégorisé plus de AMOUNT_HINT_MIN_COUNT fois. */
+function _indexAmountHints(rows) {
+  return _indexHints(rows, r => {
+    const a = roundCent(r[1]);
+    return isFinite(a) && a !== 0 ? a : null;
+  }, AMOUNT_HINT_MIN_COUNT);
 }
 
 /**
@@ -1570,9 +1588,12 @@ function _scanRevolutCandidates() {
       )
     : [];
 
-  // Suggestions règle/catégorie : couple le plus utilisé pour un libellé identique.
-  // Archives (ancien) puis Trans (récent) → Trans départage en cas d'égalité de fréquence.
-  const hints = _indexCategoryHints([].concat(_readCatRows(ARC_TAB), _readCatRows(TRA_TAB)));
+  // Suggestions règle/catégorie : couple le plus utilisé pour un libellé identique, avec repli
+  // sur le montant s'il a été catégorisé plus de AMOUNT_HINT_MIN_COUNT fois (achat récurrent).
+  // Archives (ancien) puis Trans (récent) : Trans départage en cas d'égalité de fréquence.
+  const history     = [].concat(_readCatRows(ARC_TAB), _readCatRows(TRA_TAB));
+  const labelHints  = _indexCategoryHints(history);
+  const amountHints = _indexAmountHints(history);
 
   const candidates = [];
 
@@ -1589,7 +1610,7 @@ function _scanRevolutCandidates() {
     const idx = existing.indexOf(key);
     if (idx !== -1) { existing.splice(idx, 1); continue; }
 
-    const hint = hints.get(_normLabel(label));
+    const hint = labelHints.get(_normLabel(label)) || amountHints.get(roundCent(amount));
     candidates.push({
       key:      String(candidates.length), // identifiant de sélection stable (position dans le scan)
       isoDate:  date,
