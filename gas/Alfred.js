@@ -1486,9 +1486,62 @@ const REVOLUT_RULES = ['Besoins', 'Envies', 'Epargne', 'Dette', ''];
 const EB_IMPORT_CACHE_KEY = 'EB_IMPORT_CANDIDATES';
 
 /**
+ * Normalise un libellé pour le rapprochement de suggestions : minuscules, bords rognés,
+ * espaces internes réduits. Volontairement conservateur (pas de suppression de chiffres) :
+ * le matching de suggestion se veut « libellé exact ».
+ */
+function _normLabel(s) {
+  return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Lit les lignes de données [date, montant, label, règle, catégorie] d'un onglet (sans en-tête ; [] si vide). */
+function _readCatRows(tab) {
+  if (!tab) return [];
+  const lastRow = tab.getLastRow();
+  return lastRow < 2 ? [] : tab.getRange(2, 1, lastRow - 1, 5).getValues();
+}
+
+/**
+ * Construit, à partir de lignes [date, montant, label, règle, catégorie] (sans en-tête), une table
+ * `libellé normalisé → { rule, category }` = le couple le plus utilisé pour ce libellé.
+ * Départage : fréquence d'abord, puis récence (les lignes sont supposées de la plus ancienne à
+ * la plus récente → passer Archives puis Trans). Les lignes sans règle ni catégorie sont ignorées.
+ * @returns {Map<string, {rule:string, category:string}>}
+ */
+function _indexCategoryHints(rows) {
+  const byLabel = new Map(); // normLabel -> Map(combo -> { count, seq, rule, category })
+  let seq = 0;
+  for (const r of rows) {
+    const label = _normLabel(r[2]);
+    if (!label) continue;
+    const rule     = String(r[3] || '').trim();
+    const category = String(r[4] || '').trim();
+    if (!rule && !category) continue;
+    const combo = rule + ' ' + category;
+    let combos = byLabel.get(label);
+    if (!combos) { combos = new Map(); byLabel.set(label, combos); }
+    const entry = combos.get(combo) || { count: 0, seq: 0, rule, category };
+    entry.count++;
+    entry.seq = ++seq; // ordre de lecture → récence approximative
+    combos.set(combo, entry);
+  }
+
+  const best = new Map();
+  for (const [label, combos] of byLabel) {
+    let win = null;
+    for (const e of combos.values()) {
+      if (!win || e.count > win.count || (e.count === win.count && e.seq > win.seq)) win = e;
+    }
+    best.set(label, { rule: win.rule, category: win.category });
+  }
+  return best;
+}
+
+/**
  * Récupère les transactions EUR du mois en cours depuis Enable Banking et retourne les
  * candidates à l'import (celles absentes de Trans), SANS rien écrire.
  * Déduplique par (date|montant|libellé) via consommation de liste pour gérer les doublons légitimes.
+ * Pré-remplit règle/catégorie d'après l'historique (Trans + Archives) pour un libellé identique.
  * @returns {{key:string,isoDate:string,amount:number,label:string,rule:string,category:string}[]}
  */
 function _scanRevolutCandidates() {
@@ -1517,6 +1570,10 @@ function _scanRevolutCandidates() {
       )
     : [];
 
+  // Suggestions règle/catégorie : couple le plus utilisé pour un libellé identique.
+  // Archives (ancien) puis Trans (récent) → Trans départage en cas d'égalité de fréquence.
+  const hints = _indexCategoryHints([].concat(_readCatRows(ARC_TAB), _readCatRows(TRA_TAB)));
+
   const candidates = [];
 
   for (const t of transactions) {
@@ -1532,13 +1589,14 @@ function _scanRevolutCandidates() {
     const idx = existing.indexOf(key);
     if (idx !== -1) { existing.splice(idx, 1); continue; }
 
+    const hint = hints.get(_normLabel(label));
     candidates.push({
       key:      String(candidates.length), // identifiant de sélection stable (position dans le scan)
       isoDate:  date,
       amount:   roundCent(amount),
       label:    deFormula(label),
-      rule:     isDbit ? 'Envies' : '',
-      category: isDbit ? 'Unknown' : '',
+      rule:     hint ? hint.rule     : (isDbit ? 'Envies' : ''),
+      category: hint ? hint.category : (isDbit ? 'Unknown' : ''),
     });
   }
   return candidates;

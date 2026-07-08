@@ -7,9 +7,10 @@ import { openApp } from '../helpers.js';
  *  - le modal permet de cocher/décocher et d'ajuster règle/catégorie,
  *  - confirmRevolutImport ne reçoit QUE les lignes cochées, avec leurs choix.
  */
+// rule/category = suggestions renvoyées par le scan (issues de l'historique Trans/Archives).
 const CANDIDATES = [
-  { key: '0', isoDate: '2025-07-01', amount: -12.5, label: 'IKEA', rule: 'Envies', category: 'Unknown' },
-  { key: '1', isoDate: '2025-07-02', amount: -30, label: 'Leclerc', rule: 'Envies', category: 'Unknown' },
+  { key: '0', isoDate: '2025-07-01', amount: -12.5, label: 'IKEA', rule: 'Besoins', category: 'Entretien & Travaux' },
+  { key: '1', isoDate: '2025-07-02', amount: -30, label: 'Leclerc', rule: 'Envies', category: 'Courses' },
 ];
 
 async function mockImport(page) {
@@ -32,6 +33,11 @@ test('le bouton import ouvre le modal de validation (aucune écriture directe)',
   await expect(page.locator('#modal-import')).toHaveClass(/open/);
   await expect(page.locator('#import-list .import-item')).toHaveCount(2);
   await expect(page.locator('#recent-trans-badge')).toHaveText('2');
+
+  // La règle/catégorie suggérées sont pré-sélectionnées dans les selects.
+  const item0 = page.locator('#import-list .import-item').nth(0);
+  await expect(item0.locator('.import-rule')).toHaveValue('Besoins');
+  await expect(item0.locator('.import-category')).toHaveValue('Entretien & Travaux');
 
   // Rien n'est importé tant qu'on n'a pas validé.
   expect(await page.evaluate(() => window.__gasCalls?.confirmRevolutImport || 0)).toBe(0);

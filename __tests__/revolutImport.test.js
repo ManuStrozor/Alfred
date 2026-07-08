@@ -134,3 +134,53 @@ describe('Levier 2 — scan / preview / confirm import Revolut', () => {
     expect(g._writes).toHaveLength(0);
   });
 });
+
+describe('Suggestion règle/catégorie depuis l\'historique', () => {
+  // Lignes au format feuille : [date, montant, label, règle, catégorie].
+  const row = (label, rule, category) => [null, null, label, rule, category];
+
+  test('_normLabel : minuscules, bords rognés, espaces internes réduits', () => {
+    const g = loadAlfred();
+    expect(g._normLabel('  E.LECLERC   LYON ')).toBe('e.leclerc lyon');
+  });
+
+  test('libellé identique → propose le couple règle/catégorie vu', () => {
+    const g = loadAlfred();
+    const hints = g._indexCategoryHints([row('Leclerc', 'Besoins', 'Courses')]);
+    expect(hints.get('leclerc')).toEqual({ rule: 'Besoins', category: 'Courses' });
+  });
+
+  test('plusieurs couples pour un libellé → propose le plus fréquent', () => {
+    const g = loadAlfred();
+    const hints = g._indexCategoryHints([
+      row('Leclerc', 'Besoins', 'Courses'),
+      row('Leclerc', 'Besoins', 'Courses'),
+      row('Leclerc', 'Envies', 'Restaurant'),
+    ]);
+    expect(hints.get('leclerc')).toEqual({ rule: 'Besoins', category: 'Courses' });
+  });
+
+  test('égalité de fréquence → départage par récence (dernier vu)', () => {
+    const g = loadAlfred();
+    const hints = g._indexCategoryHints([
+      row('Café', 'Envies', 'Bar & Café'),   // ancien
+      row('Café', 'Besoins', 'Restaurant'),  // plus récent
+    ]);
+    expect(hints.get('café')).toEqual({ rule: 'Besoins', category: 'Restaurant' });
+  });
+
+  test('libellés regroupés après normalisation (casse/espaces)', () => {
+    const g = loadAlfred();
+    const hints = g._indexCategoryHints([
+      row('Leclerc ', 'Besoins', 'Courses'),
+      row('  leclerc', 'Besoins', 'Courses'),
+    ]);
+    expect(hints.get(g._normLabel('LECLERC'))).toEqual({ rule: 'Besoins', category: 'Courses' });
+  });
+
+  test('ligne sans règle ni catégorie → ignorée', () => {
+    const g = loadAlfred();
+    const hints = g._indexCategoryHints([row('Vire', '', '')]);
+    expect(hints.get('vire')).toBeUndefined();
+  });
+});
