@@ -89,6 +89,7 @@ const ALFRED_PREF_DEFAULTS = {
   lightTheme:        false,
   hideSplash:        false,
   autoImportRevolut: false,
+  soldeReport:       0,
   hideNavLabels:     false,
   transLimit:        3,
   dailyGoal:         0,   // objectif de dépense/jour (€) ; 0 = désactivé
@@ -552,7 +553,11 @@ function paydayWeb(salary, balances) {
     _collectClosingInfo(closingYear, closingMonth);
   const { lep, la, csl } = _closingBalances(balances);
   const diff  = roundCent(sal - forecasted);
-  const solde = roundCent(prevsTotal + transTotal + diff);
+  // Report cumulatif : l'ancien report n'est plus une ligne Trans "Solde" (donc absent de transTotal
+  // depuis le passage en UserProp) — le ré-injecter pour que le nouveau report reprenne bien le
+  // Budget Prévisionnel du mois clôturé (report précédent + prévisions + transactions + écart salaire).
+  const prevReport = Number(getUserProp('alfred_soldeReport', 0)) || 0;
+  const solde = roundCent(prevReport + prevsTotal + transTotal + diff);
 
   _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lep, la, csl);
   handleReminders();
