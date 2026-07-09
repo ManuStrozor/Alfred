@@ -87,6 +87,44 @@ describe('AlfredForecast.compute — golden', () => {
   });
 });
 
+describe('AlfredForecast.compute — report (ex-ligne "Solde")', () => {
+  test('soldeReport appliqué au seul mois courant, quel que soit son signe', () => {
+    const out = FC.compute({ ...INPUTS, soldeReport: 500 }, { lines: PREVS });
+    expect(out.months[0].budget).toBe(-800.5);            // -1300.5 + 500 (mois courant)
+    expect(out.months[1].budget).toBe(GOLDEN_MONTHS[1].budget); // mois futurs inchangés
+    expect(out.months[5].budget).toBe(GOLDEN_MONTHS[5].budget);
+
+    const neg = FC.compute({ ...INPUTS, soldeReport: -300 }, { lines: PREVS });
+    expect(neg.months[0].budget).toBe(-1600.5);           // -1300.5 - 300
+  });
+
+  test('soldeReport absent ⇒ identique au golden', () => {
+    const out = FC.compute(INPUTS, { lines: PREVS });
+    expect(out.months.map(m => m.budget)).toEqual(GOLDEN_MONTHS.map(m => m.budget));
+  });
+});
+
+describe('AlfredForecast.computeBudgetRules — report dans d_in', () => {
+  const BASE = {
+    prevLines:  [{ row: 2, start: '', end: '', months: '', amount: -50, type: '', rule: 'Besoins' }],
+    monthTransactions: [],
+    currentAbs: 24310,
+    ruleLabels: ['Besoins', 'Envies', 'Epargne', 'Dette'],
+  };
+
+  test('report positif alimente d_in (revenus) et la répartition', () => {
+    const out = FC.computeBudgetRules({ ...BASE, soldeReport: 200 });
+    const byLabel = Object.fromEntries(out.map(r => [r.label, r]));
+    expect(byLabel.Besoins).toEqual({ label: 'Besoins', pct: 25, amount: 50 });   // 50/200
+    expect(byLabel.Reste).toEqual({ label: 'Reste', pct: 75, amount: 150 });
+  });
+
+  test('report ≤ 0 ⇒ pas dans d_in (parité avec l\'ancienne ligne)', () => {
+    const out = FC.computeBudgetRules({ ...BASE, soldeReport: -200 });
+    expect(out.every(r => r.pct === 0 && r.amount === 0)).toBe(true); // revenus = 0 → tout à 0
+  });
+});
+
 describe('AlfredForecast.periodText', () => {
   test('multiples de 12 → années', () => {
     expect(FC.periodText(12)).toBe('1 an');

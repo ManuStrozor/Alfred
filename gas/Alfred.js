@@ -626,7 +626,7 @@ function _ensureSheetWithHeader(name, header) {
 }
 
 /**
- * Applique la clôture : Historique, Archives, avance b_date, ligne "Solde", recalcul.
+ * Applique la clôture : Historique, Archives, avance b_date, report (UserProp alfred_soldeReport), recalcul.
  * @param {string}   closingStr  Mois clôturé "MM/YYYY"
  * @param {Date}     nextDate    1er du mois suivant
  * @param {number}   solde       Écart salaire réel vs prévisionnel
@@ -650,10 +650,11 @@ function _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lepBal,
     toArchive.map(t => t.sheetRow).sort((a, b) => b - a).forEach(row => TRA_TAB.deleteRow(row));
   }
 
-  // Avancer b_date + ligne Trans "Solde"
+  // Avancer b_date + stocker le report dans une UserProp (plus de ligne Trans "Solde" polluante).
+  // Le report (report du mois précédent + écart salaire réel/prévisionnel) alimente le mois courant
+  // via _forecastInputs (budget, budgetInit) et le donut (computeBudgetRules), exactement comme l'ancienne ligne.
   BUD_DATE.setFormula(`=DATE(${nextDate.getFullYear()};${nextDate.getMonth()+1};1)`);
-  TRA_TAB.getRange(TRA_TAB.getLastRow() + 1, 1, 1, 5)
-    .setValues([[nextDate, solde, 'Solde', '', '']]);
+  USER_PROPS.setProperty('alfred_soldeReport', String(solde));
 
   getForecast();
 }
@@ -852,14 +853,19 @@ function _forecastInputs() {
       };
     }
 
-    // budgetInit (mois courant) = b_in + b_out + d_in = G2 + H3 + I2.
+    // Report du mois (ex-ligne Trans "Solde") : report cumulé + écart salaire réel/prévisionnel.
+    // Alimente le mois courant comme le faisait la ligne : budget (signé), budgetInit et donut (part > 0, = d_in).
+    const soldeReport = Number(getUserProp('alfred_soldeReport', 0)) || 0;
+
+    // budgetInit (mois courant) = b_in + b_out + d_in = G2 + H3 + I2 (+ part positive du report, ex-d_in de la ligne "Solde").
     const initVals   = BUD_TAB.getRange('G2:I3').getValues();
-    const budgetInit = roundCent(initVals[0][0] + initVals[1][1] + initVals[0][2]);
+    const budgetInit = roundCent(initVals[0][0] + initVals[1][1] + initVals[0][2] + Math.max(0, soldeReport));
 
     return {
       currentAbs,
       period,
       budgetInit,
+      soldeReport,
       cslName:  CSL_NAME,
       accounts: SAVINGS_ACCOUNTS.map(a => ({ id: a.id, rate: a.rate, ceiling: a.ceiling })),
       tranSums: _sumMonthMap(tranMap),

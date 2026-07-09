@@ -27,7 +27,7 @@
     budget: 0, budgetInit: 0
   };
 
-  const _cache = { cur: null, rules: null, props: null, balances: null, balancesLoaded: false };
+  const _cache = { cur: null, rules: null, props: null, balances: null, balancesLoaded: false, soldeReport: 0 };
 
   const _trans = { items: [], editingRow: null };
 
@@ -371,6 +371,7 @@
     if (!forecastInputs || !window.AlfredForecast) {
       return { months: [], periodText: '', cslName: '', monthTransactions: monthTransactions || [], ceilingAlerts: [] };
     }
+    _cache.soldeReport = forecastInputs.soldeReport || 0; // report (ex-ligne "Solde") pour le donut (_computeRules)
     const fc = window.AlfredForecast.compute(forecastInputs, { lines: _charges.lines });
     fc.monthTransactions = monthTransactions || [];
     return fc;
@@ -839,6 +840,7 @@
       monthTransactions: _trans.items || [],
       currentAbs:        _curAbs(),
       ruleLabels:        RULES,
+      soldeReport:       _cache.soldeReport || 0,
     });
   }
 

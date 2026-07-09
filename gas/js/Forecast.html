@@ -183,7 +183,7 @@
    * @returns {{ periodText:string, months:object[], cslName:string, ceilingAlerts:object[] }}
    */
   function compute(inputs, prevs) {
-    const { currentAbs, period, budgetInit, cslName, accounts, tranSums, epargne } = inputs;
+    const { currentAbs, period, budgetInit, cslName, accounts, tranSums, epargne, soldeReport = 0 } = inputs;
     const prevLines  = (prevs && prevs.lines) || [];
     const savingsIds = new Set(accounts.map(a => a.id));
 
@@ -208,7 +208,8 @@
       const abs  = currentAbs + i;
       const base = {
         month:  absMonthToText(abs),
-        budget: roundCent(revOutput[i][0]),
+        // Report (ex-ligne Trans "Solde") appliqué au seul mois courant, quel que soit son signe.
+        budget: roundCent(revOutput[i][0] + (i === 0 ? soldeReport : 0)),
         lep: col('LEP', i), la: col('LA', i), csl: col('CSL', i),
       };
       months.push(i === 0
@@ -229,11 +230,11 @@
    *   pourcentage = -(Σ charges actives + Σ transactions du mois, filtrées sur la règle) / (b_in + d_in)
    *   montant     = pourcentage × (b_in + d_in)
    * où  b_in = Σ montants > 0 des charges actives au mois courant
-   *     d_in = Σ montants > 0 des transactions (mois courant) sans catégorie
+   *     d_in = Σ montants > 0 des transactions (mois courant) sans catégorie + part positive du report (soldeReport)
    * Reste : pourcentage = 1 − Σ(autres pourcentages) ; montant = pourcentage × (b_in + d_in).
    * (b_in + d_in) = 0 → division impossible → tout à 0 (comme la formule sheet en erreur).
    *
-   * @param {{ prevLines:Array, monthTransactions:Array, currentAbs:number, ruleLabels:string[] }} o
+   * @param {{ prevLines:Array, monthTransactions:Array, currentAbs:number, ruleLabels:string[], soldeReport?:number }} o
    * @returns {{ label:string, pct:number, amount:number }[]}  pct en %, 1 décimale ; montant au centime.
    */
   function computeBudgetRules(o) {
@@ -255,6 +256,8 @@
       if (t.amount > 0 && !t.category) dIn += t.amount;
       if (t.rule) transByRule[t.rule] = (transByRule[t.rule] || 0) + t.amount;
     }
+    // Report (ex-ligne Trans "Solde", sans catégorie ni règle) : compte comme d_in s'il est positif.
+    if ((o.soldeReport || 0) > 0) dIn += o.soldeReport;
 
     const revenus = bIn + dIn;
     if (revenus === 0) {
