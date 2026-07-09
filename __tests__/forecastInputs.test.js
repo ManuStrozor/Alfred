@@ -33,3 +33,20 @@ describe('_forecastInputs (défensif)', () => {
     expect(g._forecastInputs()).toBeNull();
   });
 });
+
+describe('readSheetData — onglet vide toléré', () => {
+  test('onglet vide (lastRow < 2) → [] sans lever (ex. Trans après clôture)', () => {
+    const emptySheet = { getLastRow: () => 1, getName: () => 'Trans' };
+    expect(() => g.readSheetData(emptySheet, 2)).not.toThrow();
+    expect(g.readSheetData(emptySheet, 2)).toEqual([]);
+  });
+
+  test('onglet avec données → valeurs de getRange (header inclus)', () => {
+    const rows = [['Date', 'Montant'], ['2026-06-01', -50]];
+    const fullSheet = {
+      getLastRow: () => rows.length,
+      getRange:   () => ({ getValues: () => rows }),
+    };
+    expect(g.readSheetData(fullSheet, 2)).toEqual(rows);
+  });
+});

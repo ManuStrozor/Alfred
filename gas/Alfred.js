@@ -1115,7 +1115,9 @@ function shortHash(str) {
  */
 function readSheetData(sheet, numCols) {
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) throw new Error('Aucune donnée trouvée dans l\'onglet "' + sheet.getName() + '".');
+  // Onglet vide (ex. Trans après une clôture qui archive tout, ou classeur neuf) : état valide,
+  // pas une erreur. On retourne [] — indexTran/indexEpargne tolèrent l'absence de données.
+  if (lastRow < 2) return [];
   return sheet.getRange(1, 1, lastRow, numCols).getValues();
 }
 
