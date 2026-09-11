@@ -14,7 +14,9 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   // channel 'msedge' : utilise l'Edge installé sur le système (aucun navigateur à télécharger)
-  projects: [{ name: 'msedge', use: { ...devices['Desktop Edge'], channel: 'msedge' } }],
+  projects: process.env.CI
+    ? [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
+    : [{ name: 'msedge', use: { ...devices['Desktop Edge'], channel: 'msedge' } }],
   // Rebuild le harnais puis le sert avant les tests
   webServer: {
     command: 'node e2e/build-harness.mjs && node e2e/serve.mjs',

@@ -5,14 +5,14 @@ const { loadAlfred } = require('./helpers/gas-env');
 /**
  * Vérifie que les endpoints d'écriture de transactions neutralisent l'injection
  * de formule Google Sheets (`deFormula`) sur les TROIS colonnes texte : libellé,
- * règle ET catégorie (colonnes C/D/E). getForecast/_editResponse sont stubés pour
+ * règle ET catégorie (colonnes C/D/E). getForecast/_editResponse_ sont stubés pour
  * isoler la logique d'écriture ; les valeurs écrites sont capturées via ctx._writes.
  */
 describe('addTransaction / editTransactionByRow — neutralisation formule (label, rule, category)', () => {
   test('addTransaction préfixe une apostrophe sur label, rule ET category', () => {
     const g = loadAlfred();
     g.getForecast = () => {};
-    g._editResponse = () => ({});
+    g._editResponse_ = () => ({});
 
     g.addTransaction(100, '2025-01-15', '=label', '=rule', '@cat');
 
@@ -25,7 +25,7 @@ describe('addTransaction / editTransactionByRow — neutralisation formule (labe
   test('addTransaction laisse un libellé normal intact', () => {
     const g = loadAlfred();
     g.getForecast = () => {};
-    g._editResponse = () => ({});
+    g._editResponse_ = () => ({});
 
     g.addTransaction(-42.5, '2025-03-01', 'Courses', 'Besoins', 'Alimentation');
 
@@ -39,7 +39,7 @@ describe('addTransaction / editTransactionByRow — neutralisation formule (labe
     const g = loadAlfred();
     g._setLastRow(10); // pour passer la borne rowIndex <= getLastRow()
     g.getForecast = () => {};
-    g._editResponse = () => ({});
+    g._editResponse_ = () => ({});
 
     g.editTransactionByRow(3, 12, '2025-02-02', '+label', '=rule', '-cat');
 

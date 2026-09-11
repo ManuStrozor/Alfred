@@ -15,8 +15,8 @@ describe('Levier 1 — soldes hors du chemin critique', () => {
     g._propStore.set('EB_ALL_ACCOUNTS', JSON.stringify([{ uid: 'a1', name: 'X', currency: 'EUR' }]));
     g._propStore.set('EB_SHOWN_ACCOUNTS', JSON.stringify(['a1']));
     // Isole getAllData des lectures de feuilles (testées ailleurs).
-    g._forecastInputs      = () => null;
-    g._getMonthTransactions = () => [];
+    g._forecastInputs_      = () => null;
+    g._getMonthTransactions_ = () => [];
     g.getSavingsProps      = () => ({});
     g.getRevolutTasks      = () => [];
     g.getPrevLines         = () => ({ lines: [], types: [] });
@@ -29,7 +29,7 @@ describe('Levier 1 — soldes hors du chemin critique', () => {
 
   test('getAccountBalances récupère les soldes des seuls comptes affichés', () => {
     const g = loadAlfred();
-    g._enableBankingHeaders = () => ({});
+    g._enableBankingHeaders_ = () => ({});
     g._propStore.set('EB_ALL_ACCOUNTS', JSON.stringify([
       { uid: 'a1', name: 'Courant', currency: 'EUR' },
       { uid: 'a2', name: 'Autre', currency: 'EUR' },
@@ -56,8 +56,8 @@ describe('Levier 1 — soldes hors du chemin critique', () => {
 
 describe('Levier 2 — scan / preview / confirm import Revolut', () => {
   const stubOneTransaction = g => {
-    g._enableBankingHeaders = () => ({});
-    g.Utilities = { formatDate: () => '2025-07-01' };
+    g._enableBankingHeaders_ = () => ({});
+    g.Utilities = { ...g.Utilities, formatDate: () => '2025-07-01' };
     g._propStore.set('EB_ACCOUNT_ID', 'acc1');
     g._setFetch(() => ({
       getResponseCode: () => 200,
@@ -73,11 +73,11 @@ describe('Levier 2 — scan / preview / confirm import Revolut', () => {
     }));
   };
 
-  test('_scanRevolutCandidates retourne les candidates SANS rien écrire', () => {
+  test('_scanRevolutCandidates_ retourne les candidates SANS rien écrire', () => {
     const g = loadAlfred();
     stubOneTransaction(g);
 
-    const candidates = g._scanRevolutCandidates();
+    const candidates = g._scanRevolutCandidates_();
 
     expect(g._writes).toHaveLength(0); // aucune écriture pendant le scan
     expect(candidates).toHaveLength(1);
@@ -98,7 +98,7 @@ describe('Levier 2 — scan / preview / confirm import Revolut', () => {
 
   test('previewRevolutImport est best-effort : { candidates: [] } sans connexion', () => {
     const g = loadAlfred();
-    // Pas d'EB_ACCOUNT_ID → _scanRevolutCandidates throw → preview absorbe.
+    // Pas d'EB_ACCOUNT_ID → _scanRevolutCandidates_ throw → preview absorbe.
     expect(g.previewRevolutImport()).toEqual({ candidates: [] });
   });
 
@@ -139,20 +139,20 @@ describe('Suggestion règle/catégorie depuis l\'historique', () => {
   // Lignes au format feuille : [date, montant, label, règle, catégorie].
   const row = (label, rule, category) => [null, null, label, rule, category];
 
-  test('_normLabel : minuscules, bords rognés, espaces internes réduits', () => {
+  test('_normLabel_ : minuscules, bords rognés, espaces internes réduits', () => {
     const g = loadAlfred();
-    expect(g._normLabel('  E.LECLERC   LYON ')).toBe('e.leclerc lyon');
+    expect(g._normLabel_('  E.LECLERC   LYON ')).toBe('e.leclerc lyon');
   });
 
   test('libellé identique → propose le couple règle/catégorie vu', () => {
     const g = loadAlfred();
-    const hints = g._indexCategoryHints([row('Leclerc', 'Besoins', 'Courses')]);
+    const hints = g._indexCategoryHints_([row('Leclerc', 'Besoins', 'Courses')]);
     expect(hints.get('leclerc')).toEqual({ rule: 'Besoins', category: 'Courses' });
   });
 
   test('plusieurs couples pour un libellé → propose le plus fréquent', () => {
     const g = loadAlfred();
-    const hints = g._indexCategoryHints([
+    const hints = g._indexCategoryHints_([
       row('Leclerc', 'Besoins', 'Courses'),
       row('Leclerc', 'Besoins', 'Courses'),
       row('Leclerc', 'Envies', 'Restaurant'),
@@ -162,7 +162,7 @@ describe('Suggestion règle/catégorie depuis l\'historique', () => {
 
   test('égalité de fréquence → départage par récence (dernier vu)', () => {
     const g = loadAlfred();
-    const hints = g._indexCategoryHints([
+    const hints = g._indexCategoryHints_([
       row('Café', 'Envies', 'Bar & Café'),   // ancien
       row('Café', 'Besoins', 'Restaurant'),  // plus récent
     ]);
@@ -171,16 +171,16 @@ describe('Suggestion règle/catégorie depuis l\'historique', () => {
 
   test('libellés regroupés après normalisation (casse/espaces)', () => {
     const g = loadAlfred();
-    const hints = g._indexCategoryHints([
+    const hints = g._indexCategoryHints_([
       row('Leclerc ', 'Besoins', 'Courses'),
       row('  leclerc', 'Besoins', 'Courses'),
     ]);
-    expect(hints.get(g._normLabel('LECLERC'))).toEqual({ rule: 'Besoins', category: 'Courses' });
+    expect(hints.get(g._normLabel_('LECLERC'))).toEqual({ rule: 'Besoins', category: 'Courses' });
   });
 
   test('ligne sans règle ni catégorie → ignorée', () => {
     const g = loadAlfred();
-    const hints = g._indexCategoryHints([row('Vire', '', '')]);
+    const hints = g._indexCategoryHints_([row('Vire', '', '')]);
     expect(hints.get('vire')).toBeUndefined();
   });
 });
@@ -197,7 +197,7 @@ describe('Suggestion par montant (repli quand le marchand est inconnu)', () => {
       rowA(-9.99, 'Marchand3', 'Envies', 'Abonnement'),
       rowA(-9.99, 'Marchand4', 'Envies', 'Abonnement'),
     ];
-    expect(g._indexAmountHints(rows).get(-9.99)).toEqual({ rule: 'Envies', category: 'Abonnement' });
+    expect(g._indexAmountHints_(rows).get(-9.99)).toEqual({ rule: 'Envies', category: 'Abonnement' });
   });
 
   test('montant vu exactement 3 fois → pas de proposition (seuil strict > 3)', () => {
@@ -207,16 +207,16 @@ describe('Suggestion par montant (repli quand le marchand est inconnu)', () => {
       rowA(-9.99, 'B', 'Envies', 'Abonnement'),
       rowA(-9.99, 'C', 'Envies', 'Abonnement'),
     ];
-    expect(g._indexAmountHints(rows).get(-9.99)).toBeUndefined();
+    expect(g._indexAmountHints_(rows).get(-9.99)).toBeUndefined();
   });
 
-  test('_scanRevolutCandidates : libellé prioritaire, sinon repli sur le montant fréquent', () => {
+  test('_scanRevolutCandidates_ : libellé prioritaire, sinon repli sur le montant fréquent', () => {
     const g = loadAlfred();
-    g._enableBankingHeaders = () => ({});
-    g.Utilities = { formatDate: () => '2025-07-01' };
+    g._enableBankingHeaders_ = () => ({});
+    g.Utilities = { ...g.Utilities, formatDate: () => '2025-07-01' };
     g._propStore.set('EB_ACCOUNT_ID', 'acc1');
     // Historique : 'IKEA' → Besoins/Entretien ; montant -9.99 vu 4× → Envies/Abonnement.
-    g._readCatRows = () => [
+    g._readCatRows_ = () => [
       [null, -50, 'IKEA', 'Besoins', 'Entretien & Travaux'],
       [null, -9.99, 'A', 'Envies', 'Abonnement'],
       [null, -9.99, 'B', 'Envies', 'Abonnement'],
@@ -231,7 +231,7 @@ describe('Suggestion par montant (repli quand le marchand est inconnu)', () => {
       ] }),
     }));
 
-    const c = g._scanRevolutCandidates();
+    const c = g._scanRevolutCandidates_();
     expect(c[0]).toMatchObject({ label: 'IKEA', rule: 'Besoins', category: 'Entretien & Travaux' }); // par libellé
     expect(c[1]).toMatchObject({ label: 'Nouveau', rule: 'Envies', category: 'Abonnement' });        // repli montant
   });

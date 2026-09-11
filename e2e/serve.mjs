@@ -1,7 +1,7 @@
 /* Serveur statique minimal (node natif, zéro dépendance) pour dist/test. */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { resolve, dirname, extname, normalize } from 'node:path';
+import { resolve, dirname, extname, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'test');
@@ -18,12 +18,13 @@ createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(req.url.split('?')[0]);
     if (p === '/' || p === '') p = '/index.html';
-    const file = resolve(ROOT, '.' + normalize(p));
-    if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
+    const file = resolve(ROOT, '.' + p);
+    const rel = relative(ROOT, file);
+    if (rel.startsWith('..') || isAbsolute(rel)) { res.writeHead(403).end(); return; }
     const body = await readFile(file);
     res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' });
     res.end(body);
   } catch {
     res.writeHead(404).end('Not found');
   }
-}).listen(PORT, () => console.log(`[serve] dist/test → http://localhost:${PORT}`));
+}).listen(PORT, '127.0.0.1', () => console.log(`[serve] dist/test → http://localhost:${PORT}`));

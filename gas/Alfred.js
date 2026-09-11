@@ -5,7 +5,6 @@ const PROPS      = PropertiesService.getScriptProperties();
 const USER_PROPS = PropertiesService.getUserProperties();
 
 // Multi-user : chaque utilisateur peut enregistrer son propre classeur via setSheetId().
-// Si aucun ID enregistré, on utilise le classeur container (compte propriétaire du script).
 
 // Si l'utilisateur n'a pas configuré son classeur, TABS = null → doGet redirige vers Setup.
 const TABS = (() => {
@@ -43,25 +42,25 @@ const EB_API_SUB_ENDPOINT = `https://${EB_API_SUBDOMAIN}`;
 const EB_API_COM_ENDPOINT = `https://${EB_DOTCOM}/api`;
 
 /** Lit une propriété de script ; retourne `fallback` si absente ou vide. */
-function getProp(key, fallback = null) {
+function getProp_(key, fallback = null) {
   const v = PROPS.getProperty(key);
   return (v !== null && v !== '') ? v : fallback;
 }
 
 /** Persiste une propriété de script. */
-function setProp(key, value) {
+function setProp_(key, value) {
   PROPS.setProperty(key, String(value));
 }
 
 /**
  * Lit une propriété utilisateur (UserProperties).
- * Fallback sur ScriptProperties pour migration transparente (User A conserve ses valeurs existantes).
+ * Migration depuis ScriptProperties réservée au propriétaire identifié.
  * Puis sur `fallback` si absent des deux.
  */
-function getUserProp(key, fallback = null) {
+function getUserProp_(key, fallback = null) {
   const uv = USER_PROPS.getProperty(key);
   if (uv !== null && uv !== '') return uv;
-  const sv = PROPS.getProperty(key);
+  const sv = isOwner() ? PROPS.getProperty(key) : null;
   if (sv !== null && sv !== '') return sv;
   return fallback;
 }
@@ -76,6 +75,42 @@ function getUserProp(key, fallback = null) {
 function deFormula(s) {
   const str = String(s == null ? '' : s);
   return /^[=+\-@\t\r]/.test(str) ? "'" + str : str;
+}
+
+function escapeHtml_(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function parseAmount_(value) {
+  if ((typeof value !== 'number' && typeof value !== 'string') ||
+      String(value).trim() === '' || !Number.isFinite(Number(value))) {
+    throw new Error('Montant invalide.');
+  }
+  return Number(value);
+}
+
+/** Même interprétation locale pour l'ajout et l'édition, sans dates impossibles. */
+function parseDate_(value) {
+  const match = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) throw new Error('Date invalide.');
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    throw new Error('Date invalide.');
+  }
+  return date;
+}
+
+/** Sérialise les écritures d'un utilisateur, même entre plusieurs onglets ouverts. */
+function withUserLock_(fn) {
+  const lock = LockService.getUserLock();
+  lock.waitLock(30000);
+  try { return fn(); }
+  finally {
+    try { SpreadsheetApp.flush(); }
+    finally { lock.releaseLock(); }
+  }
 }
 
 // ----- Préférences utilisateur (UserProperties) ----------------------------------------------------------------------------------
@@ -108,7 +143,7 @@ function getUserPrefs() {
     const defVal = ALFRED_PREF_DEFAULTS[k];
     if (raw === undefined) { out[k] = defVal; continue; }
     out[k] = typeof defVal === 'boolean' ? raw === 'true'
-           : typeof defVal === 'number'  ? parseInt(raw, 10)
+           : typeof defVal === 'number'  ? (Number.isFinite(Number(raw)) ? Number(raw) : defVal)
            : raw;
   }
   return out;
@@ -130,7 +165,11 @@ function getUserPrefsJson() {
 
 /** Web app : modifie une préférence UI (clé doit être listée dans ALFRED_PREF_DEFAULTS). */
 function setUserPref(key, value) {
-  if (!(key in ALFRED_PREF_DEFAULTS)) throw new Error('Préférence inconnue : ' + key);
+  if (!Object.prototype.hasOwnProperty.call(ALFRED_PREF_DEFAULTS, key)) throw new Error('Préférence inconnue : ' + key);
+  const def = ALFRED_PREF_DEFAULTS[key];
+  if (typeof value !== typeof def || (typeof def === 'number' && !Number.isFinite(value))) {
+    throw new Error('Valeur de préférence invalide.');
+  }
   USER_PROPS.setProperty('alfred_' + key, String(value));
 }
 
@@ -183,7 +222,8 @@ function getSavingsProps(scriptProps, userProps) {
 
 /** Web app : true si l'utilisateur courant est le propriétaire du script (ScriptProp ALFRED_OWNER). */
 function isOwner() {
-  return userEmail() === PROPS.getProperty('ALFRED_OWNER');
+  const email = userEmail();
+  return !!email && email === PROPS.getProperty('ALFRED_OWNER');
 }
 
 /**
@@ -207,6 +247,10 @@ function getAllProps() {
 
 /** Web app : modifie une propriété. Les ScriptProperties (partagées) sont réservées au propriétaire. */
 function setAnyProp(source, key, value) {
+  return withUserLock_(() => setAnyProp_(source, key, value));
+}
+
+function setAnyProp_(source, key, value) {
   if (source !== 'user') assertOwner();
   (source === 'user' ? USER_PROPS : PROPS).setProperty(key, String(value));
   invalidateCache();
@@ -215,6 +259,10 @@ function setAnyProp(source, key, value) {
 
 /** Web app : supprime une propriété. Les ScriptProperties (partagées) sont réservées au propriétaire. */
 function deleteProp(source, key) {
+  return withUserLock_(() => deleteProp_(source, key));
+}
+
+function deleteProp_(source, key) {
   if (source !== 'user') assertOwner();
   (source === 'user' ? USER_PROPS : PROPS).deleteProperty(key);
   invalidateCache();
@@ -239,7 +287,7 @@ function deleteProp(source, key) {
  * @param {{month:string, budget:number, lep:number, la:number}} cur  mois courant calculé côté client
  */
 function getGeminiInsight(clientKey, cur) {
-  const apiKey = getProp('GEMINI_API_KEY');
+  const apiKey = getProp_('GEMINI_API_KEY');
   if (!apiKey) return { noKey: true };
 
   const GEMINI_CACHE_KEY = 'gemini_insight';
@@ -258,7 +306,7 @@ function getGeminiInsight(clientKey, cur) {
   const MODELS = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
 
   try {
-    const trs = _getMonthTransactions().filter(tr => tr.category?.length > 0);
+    const trs = _getMonthTransactions_().filter(tr => tr.category?.length > 0);
     if (!cur) return { error: 'Mois courant introuvable dans le prévisionnel.' };
 
     const bdate       = BUD_DATE.getValue();
@@ -340,23 +388,23 @@ function getGeminiInsight(clientKey, cur) {
 }
 
 /** Propriétés utilisateur — fallback ScriptProperties pour migration, puis défauts légaux FR */
-const CSL_NAME    = getUserProp('CSL_NAME',    'CSL');
-const LA_CEILING  = getUserProp('LA_CEILING',  '22950');
-const LA_RATE     = getUserProp('LA_RATE',     '0.015');
-const LEP_CEILING = getUserProp('LEP_CEILING', '10000');
-const LEP_RATE    = getUserProp('LEP_RATE',    '0.025');
-const CACHE_TTL   = parseInt(getProp('CACHE_TTL', '60'), 10); // secondes — ScriptProperties (infrastructure)
+const CSL_NAME    = getUserProp_('CSL_NAME',    'CSL');
+const LA_CEILING  = getUserProp_('LA_CEILING',  '22950');
+const LA_RATE     = getUserProp_('LA_RATE',     '0.015');
+const LEP_CEILING = getUserProp_('LEP_CEILING', '10000');
+const LEP_RATE    = getUserProp_('LEP_RATE',    '0.025');
+const CACHE_TTL   = parseInt(getProp_('CACHE_TTL', '60'), 10); // secondes — ScriptProperties (infrastructure)
 
 // ----- Cache (CacheService) ------------------------------------------------------------------------------------------------------
 
-const CACHE = CacheService.getScriptCache();
+const CACHE = CacheService.getUserCache();
 
 /**
  * Retourne la valeur en cache pour `key` si elle existe,
  * sinon appelle `fn()`, met le résultat en cache et le retourne.
  * Le try/catch absorbe silencieusement les valeurs trop volumineuses (> 100 KB).
  */
-function getCached(key, fn, ttl = CACHE_TTL) {
+function getCached_(key, fn, ttl = CACHE_TTL) {
   const hit = CACHE.get(key);
   if (hit) return JSON.parse(hit);
   const result = fn();
@@ -366,9 +414,9 @@ function getCached(key, fn, ttl = CACHE_TTL) {
 
 /** Supprime les entrées de cache invalidées par une modification du classeur. */
 function invalidateCache() {
-  CACHE.removeAll(['budget_rules']);
-  // Le forecast n'est plus caché côté serveur (calcul client). gemini_insight expire
-  // naturellement via son TTL (60s) — la clé de données (clientKey) détecte les changements.
+  CACHE.removeAll(['budget_rules', 'gemini_insight', 'EB_IMPORT_CANDIDATES']);
+  // Le forecast est calculé côté client ; les conseils et aperçus bancaires doivent
+  // être recalculés après toute modification du classeur.
 }
 
 // ----- Constantes ----------------------------------------------------------------------------------------------------------------
@@ -442,8 +490,8 @@ function spreadExpense() {
 
   // Écriture dans Prevs (cols A-H en un seul appel, puis formule + validation sur F)
   const newRow = PRE_TAB.getLastRow() + 1;
-  PRE_TAB.getRange(newRow, 1, 1, 8).setValues([[startStr, endStr, '', monthly, 'Pocket', '', label, rule]]);
-  _setPrevFormula(newRow);
+  PRE_TAB.getRange(newRow, 1, 1, 8).setValues([[startStr, endStr, '', monthly, 'Pocket', '', deFormula(label), deFormula(rule)]]);
+  _setPrevFormula_(newRow);
 
   getForecast();
   handleReminders();
@@ -492,7 +540,7 @@ function handleReminders() {
   if (!newPockets.length && !expiredPockets.length) return;
 
   // Titres des tâches existantes dans '@default' — pour détecter les hashs déjà présents
-  const existingTitles = _listTasks({ showCompleted: true, showHidden: true })
+  const existingTitles = _listTasks_({ showCompleted: true, showHidden: true })
     .filter(t => t.title)
     .map(t => t.title);
 
@@ -522,7 +570,7 @@ function handleReminders() {
   }
 }
 
-function _getClosingDates(bDate) {
+function _getClosingDates_(bDate) {
   const closingMonth = bDate.getMonth();   // 0-indexé
   const closingYear  = bDate.getFullYear();
   return {
@@ -541,28 +589,33 @@ function _getClosingDates(bDate) {
  * @returns {{ closedMonth: string, archivedCount: number, diff: number,
  *             forecastInputs: object, monthTransactions: object[] }}
  */
-function paydayWeb(salary, balances) {
-  const sal = parseFloat(salary);
+function paydayWeb(salary, balances, expectedMonth) {
+  return withUserLock_(() => paydayWeb_(salary, balances, expectedMonth));
+}
+
+function paydayWeb_(salary, balances, expectedMonth) {
+  const sal = parseAmount_(salary);
   if (!Number.isFinite(sal)) throw new Error('Salaire invalide.');
   const bDate = BUD_DATE.getValue();
-  if (!(bDate instanceof Date)) throw new Error('Date invalide en A3.');
+  if (!(bDate instanceof Date) || isNaN(bDate)) throw new Error('Date invalide en A3.');
 
-  const { closingMonth, closingYear, closingStr, nextDate } = _getClosingDates(bDate);
+  const { closingMonth, closingYear, closingStr, nextDate } = _getClosingDates_(bDate);
+  if (expectedMonth !== closingStr) throw new Error('Le mois a changé : rechargez avant de clôturer.');
 
   const { forecasted, toArchive, transTotal, prevsTotal } =
-    _collectClosingInfo(closingYear, closingMonth);
-  const { lep, la, csl } = _closingBalances(balances);
+    _collectClosingInfo_(closingYear, closingMonth);
+  const { lep, la, csl } = _closingBalances_(balances);
   const diff  = roundCent(sal - forecasted);
   // Report cumulatif : l'ancien report n'est plus une ligne Trans "Solde" (donc absent de transTotal
   // depuis le passage en UserProp) — le ré-injecter pour que le nouveau report reprenne bien le
   // Budget Prévisionnel du mois clôturé (report précédent + prévisions + transactions + écart salaire).
-  const prevReport = Number(getUserProp('alfred_soldeReport', 0)) || 0;
+  const prevReport = Number(getUserProp_('alfred_soldeReport', 0)) || 0;
   const solde = roundCent(prevReport + prevsTotal + transTotal + diff);
 
-  _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lep, la, csl);
+  _applyClose_(closingStr, nextDate, solde, toArchive, transTotal, lep, la, csl);
   handleReminders();
 
-  return { closedMonth: closingStr, archivedCount: toArchive.length, diff: solde, ..._editResponse() };
+  return { closedMonth: closingStr, archivedCount: toArchive.length, diff: solde, ..._editResponse_() };
 }
 
 /**
@@ -572,7 +625,7 @@ function paydayWeb(salary, balances) {
  * @param {number} closingMonth  Mois 0-indexé du mois à clôturer
  * @returns {{ forecasted: number, toArchive: object[], transTotal: number, prevsTotal: number }}
  */
-function _collectClosingInfo(closingYear, closingMonth) {
+function _collectClosingInfo_(closingYear, closingMonth) {
 
   // Salaire prévisionnel ([Salaire] dans Prevs)
   const preLastRow    = PRE_TAB.getLastRow();
@@ -592,7 +645,7 @@ function _collectClosingInfo(closingYear, closingMonth) {
     if (isNaN(d)) continue;
     if (d.getFullYear() === closingYear && d.getMonth() === closingMonth) {
       toArchive.push({ sheetRow: i + 2, row: traData[i] });
-      transTotal += traData[i][1];
+      transTotal += parseAmount_(traData[i][1]);
     }
   }
 
@@ -601,7 +654,7 @@ function _collectClosingInfo(closingYear, closingMonth) {
   for (let i = 1; i < preValues.length; i++) {
     const p = preValues[i];
     if (!p[3]) continue;
-    if (!prevLineApplies(_parsePrevBounds(p[0], p[1], p[2]), closingAbs)) continue;
+    if (!prevLineApplies(_parsePrevBounds_(p[0], p[1], p[2]), closingAbs)) continue;
     prevsTotal += Number(p[3]);
   }
 
@@ -615,13 +668,13 @@ function _collectClosingInfo(closingYear, closingMonth) {
  * aucun repli sur la sheet : on exige des soldes valides pour ne pas archiver de données obsolètes.
  * @param {{lep:number, la:number, csl:number}} balances
  */
-function _closingBalances(balances) {
-  const ok = balances && ['lep', 'la', 'csl'].every(k => typeof balances[k] === 'number');
+function _closingBalances_(balances) {
+  const ok = balances && ['lep', 'la', 'csl'].every(k => Number.isFinite(balances[k]));
   if (!ok) throw new Error(`Soldes épargne manquants : rechargez l'application avant de clôturer.`);
   return { lep: balances.lep, la: balances.la, csl: balances.csl };
 }
 
-function _ensureSheetWithHeader(name, header) {
+function _ensureSheetWithHeader_(name, header) {
   let tab = TABS.getSheetByName(name);
   if (!tab) {
     tab = TABS.insertSheet(name);
@@ -641,23 +694,30 @@ function _ensureSheetWithHeader(name, header) {
  * @param {number}   laBal       Solde LA courant
  * @param {number}   cslBal    Solde CSL courant
  */
-function _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lepBal, laBal, cslBal) {
+function _applyClose_(closingStr, nextDate, solde, toArchive, transTotal, lepBal, laBal, cslBal) {
 
   // Historique
-  HIS_TAB = HIS_TAB || _ensureSheetWithHeader(SH_HIS, ['Mois','Transactions réelles','Solde LEP','Solde LA','Solde CSL']);
+  HIS_TAB = HIS_TAB || _ensureSheetWithHeader_(SH_HIS, ['Mois','Transactions réelles','Solde LEP','Solde LA','Solde CSL']);
   HIS_TAB.getRange(HIS_TAB.getLastRow() + 1, 1, 1, 5).setValues([[closingStr, transTotal, lepBal, laBal, cslBal]]);
 
   // Archives
   if (toArchive.length > 0) {
-    ARC_TAB = ARC_TAB || _ensureSheetWithHeader(SH_ARC, ['Date','Montant','Label','Règle','Catégorie']);
+    ARC_TAB = ARC_TAB || _ensureSheetWithHeader_(SH_ARC, ['Date','Montant','Label','Règle','Catégorie']);
     ARC_TAB.getRange(ARC_TAB.getLastRow() + 1, 1, toArchive.length, 5)
-      .setValues(toArchive.map(t => t.row));
-    toArchive.map(t => t.sheetRow).sort((a, b) => b - a).forEach(row => TRA_TAB.deleteRow(row));
+      .setValues(toArchive.map(t => t.row.map((v, i) => i >= 2 ? deFormula(v) : v)));
+    // Supprimer les blocs contigus du bas vers le haut : un appel Sheets par bloc.
+    const rows = toArchive.map(t => t.sheetRow).sort((a, b) => b - a);
+    for (let i = 0; i < rows.length;) {
+      const end = rows[i++];
+      let start = end;
+      while (i < rows.length && rows[i] === start - 1) start = rows[i++];
+      TRA_TAB.deleteRows(start, end - start + 1);
+    }
   }
 
   // Avancer b_date + stocker le report dans une UserProp (plus de ligne Trans "Solde" polluante).
   // Le report (report du mois précédent + écart salaire réel/prévisionnel) alimente le mois courant
-  // via _forecastInputs (budget, budgetInit) et le donut (computeBudgetRules), exactement comme l'ancienne ligne.
+  // via _forecastInputs_ (budget, budgetInit) et le donut (computeBudgetRules), exactement comme l'ancienne ligne.
   BUD_DATE.setFormula(`=DATE(${nextDate.getFullYear()};${nextDate.getMonth()+1};1)`);
   USER_PROPS.setProperty('alfred_soldeReport', String(solde));
 
@@ -671,7 +731,7 @@ function _applyClose(closingStr, nextDate, solde, toArchive, transTotal, lepBal,
  * Quand Enable Banking redirige vers cette URL après consentement Revolut,
  * le paramètre ?code= est présent : on échange le code et on affiche une page de confirmation.
  */
-function _callbackPage(icon, title, body) {
+function _callbackPage_(icon, title, body) {
   return HtmlService.createHtmlOutput(
     '<!DOCTYPE html><html><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,interactive-widget=resizes-content">' +
@@ -686,10 +746,10 @@ function _callbackPage(icon, title, body) {
 function doGet(e) {
   if (e && e.parameter.code) {
     try {
-      _exchangeEnableBankingCode(e.parameter.code, e.parameter.state || '');
-      return _callbackPage('✅', 'Revolut connecté !', 'La session a été enregistrée.<br>Vous pouvez fermer cette page.');
+      _exchangeEnableBankingCode_(e.parameter.code, e.parameter.state || '');
+      return _callbackPage_('✅', 'Revolut connecté !', 'La session a été enregistrée.<br>Vous pouvez fermer cette page.');
     } catch (err) {
-      return _callbackPage('❌', 'Erreur', err.message);
+      return _callbackPage_('❌', 'Erreur', escapeHtml_(err.message));
     }
   }
 
@@ -717,6 +777,11 @@ function doGet(e) {
  * @returns {{ success: boolean, title?: string, error?: string }}
  */
 function setSheetId(urlOrId) {
+  return withUserLock_(() => setSheetId_(urlOrId));
+}
+
+function setSheetId_(urlOrId) {
+  if (typeof urlOrId !== 'string') return { error: 'Classeur invalide.' };
   const match = urlOrId.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   const id    = match ? match[1] : urlOrId.trim();
   try {
@@ -724,6 +789,7 @@ function setSheetId(urlOrId) {
     const missing = ['Budgets', 'Prevs', 'Trans', 'Epargne'].filter(n => !ss.getSheetByName(n));
     if (missing.length) return { error: 'Onglets manquants : ' + missing.join(', ') };
     USER_PROPS.setProperty('alfred_sheet_id', id);
+    invalidateCache();
     return { success: true, title: ss.getName() };
   } catch(_) {
     return { error: 'Classeur introuvable ou accès refusé. Vérifiez l\'URL et vos permissions.' };
@@ -736,14 +802,19 @@ function setSheetId(urlOrId) {
  * @returns {{ success: boolean, title?: string, id?: string, error?: string }}
  */
 function createSheetFromTemplate() {
+  return withUserLock_(() => createSheetFromTemplate_());
+}
+
+function createSheetFromTemplate_() {
   try {
-    const templateId = getProp('ALFRED_TEMPLATE_ID');
+    const templateId = getProp_('ALFRED_TEMPLATE_ID');
     if (!templateId) return { error: 'Problème de configuration du modèle. Contactez le développeur.' };
 
     const copy = DriveApp.getFileById(templateId).makeCopy(APP + ' — ' + userEmail());
     const id   = copy.getId();
 
     USER_PROPS.setProperty('alfred_sheet_id', id);
+    invalidateCache();
     return { success: true, title: copy.getName(), id, url: webappUrl() };
   } catch (e) {
     return { error: e.message };
@@ -777,7 +848,7 @@ function includes(filenames) {
 
 
 /** Transactions du mois courant (b_date), triées du plus récent au plus ancien. */
-function _getMonthTransactions() {
+function _getMonthTransactions_() {
   const bDate = BUD_DATE.getValue();
   if (!(bDate instanceof Date)) return [];
   const year  = bDate.getFullYear();
@@ -813,7 +884,7 @@ function _getMonthTransactions() {
 }
 
 /** Somme une Map<absMonth, number[]> en objet {absMonth: total} sérialisable (JSON ne gère pas les Map). */
-function _sumMonthMap(map) {
+function _sumMonthMap_(map) {
   const out = {};
   for (const [k, arr] of map) out[k] = arr.reduce((s, v) => s + v, 0);
   return out;
@@ -826,7 +897,7 @@ function _sumMonthMap(map) {
  * déjà fournies par getPrevLines() (bornes MM/YYYY, sans objet Date → indexables côté client).
  * Best-effort : ne casse jamais getAllData (try/catch → null ; le client retombe sur le forecast serveur).
  */
-function _forecastInputs() {
+function _forecastInputs_() {
   try {
     const period = getPeriod(BUD_PERIOD.getValue());
     const date   = BUD_DATE.getValue();
@@ -846,25 +917,24 @@ function _forecastInputs() {
     }
 
     // Epargne → sommes mensuelles + mois de départ par compte.
-    // initialAbs = 1re clé insérée (ordre du sheet), transmise explicitement car JSON réordonne
-    // les clés numériques d'un objet (epargneCalc démarre le cumul exactement à ce mois).
+    // Commencer au mois le plus ancien, même si les mouvements ne sont pas triés.
     const epaMaps = indexEpargne(readSheetData(EPA_TAB, 3));
     const epargne = {};
     for (const acc of SAVINGS_ACCOUNTS) {
       const map = epaMaps[acc.id];
       epargne[acc.id] = {
-        initialAbs: map.size ? map.keys().next().value : null,
-        sums:       _sumMonthMap(map),
+        initialAbs: map.size ? Math.min(...map.keys()) : null,
+        sums:       _sumMonthMap_(map),
       };
     }
 
     // Report du mois (ex-ligne Trans "Solde") : report cumulé + écart salaire réel/prévisionnel.
     // Alimente le mois courant comme le faisait la ligne : budget (signé), budgetInit et donut (part > 0, = d_in).
-    const soldeReport = Number(getUserProp('alfred_soldeReport', 0)) || 0;
+    const soldeReport = Number(getUserProp_('alfred_soldeReport', 0)) || 0;
 
     // budgetInit (mois courant) = b_in + b_out + d_in = G2 + H3 + I2 (+ part positive du report, ex-d_in de la ligne "Solde").
     const initVals   = BUD_TAB.getRange('G2:I3').getValues();
-    const budgetInit = roundCent(initVals[0][0] + initVals[1][1] + initVals[0][2] + Math.max(0, soldeReport));
+    const budgetInit = roundCent(Number(initVals[0][0]) + Number(initVals[1][1]) + Number(initVals[0][2]) + Math.max(0, soldeReport));
 
     return {
       currentAbs,
@@ -873,7 +943,7 @@ function _forecastInputs() {
       soldeReport,
       cslName:  CSL_NAME,
       accounts: SAVINGS_ACCOUNTS.map(a => ({ id: a.id, rate: a.rate, ceiling: a.ceiling })),
-      tranSums: _sumMonthMap(tranMap),
+      tranSums: _sumMonthMap_(tranMap),
       epargne,
     };
   } catch (_) {
@@ -885,38 +955,44 @@ function _forecastInputs() {
  * Réponse standard des endpoints d'édition : de quoi recalculer le forecast côté client.
  * @param {boolean} [withPrevs]  inclure les lignes Prevs (les éditions de charges les modifient).
  */
-function _editResponse(withPrevs) {
-  const r = { forecastInputs: _forecastInputs(), monthTransactions: _getMonthTransactions() };
+function _editResponse_(withPrevs) {
+  const r = { forecastInputs: _forecastInputs_(), monthTransactions: _getMonthTransactions_() };
   if (withPrevs) r.prevs = getPrevLines();
   return r;
 }
 
 /** Web app : supprime la ligne Trans à l'index donné, puis renvoie de quoi recalculer le forecast. */
 function deleteTransactionByRow(rowIndex) {
+  return withUserLock_(() => deleteTransactionByRow_(rowIndex));
+}
+
+function deleteTransactionByRow_(rowIndex) {
   if (!Number.isInteger(rowIndex) || rowIndex < 2 || rowIndex > TRA_TAB.getLastRow()) throw new Error('Index invalide : ' + rowIndex);
   TRA_TAB.deleteRow(rowIndex);
   getForecast();
-  return _editResponse();
+  return _editResponse_();
 }
 
 /** Web app : modifie une ligne Trans existante, recalcule et renvoie le forecast. */
 function editTransactionByRow(rowIndex, amount, date, label, rule, category) {
+  return withUserLock_(() => editTransactionByRow_(rowIndex, amount, date, label, rule, category));
+}
+
+function editTransactionByRow_(rowIndex, amount, date, label, rule, category) {
   if (!Number.isInteger(rowIndex) || rowIndex < 2 || rowIndex > TRA_TAB.getLastRow()) throw new Error('Index invalide : ' + rowIndex);
-  const amt = parseFloat(amount);
-  if (!Number.isFinite(amt)) throw new Error('Montant invalide.');
-  const dateObj = new Date(date);
-  if (isNaN(dateObj)) throw new Error('Date invalide.');
+  const amt = parseAmount_(amount);
+  const dateObj = parseDate_(date);
   TRA_TAB.getRange(rowIndex, 1, 1, 5).setValues([[
     dateObj, amt, deFormula(String(label || '')), deFormula(String(rule || '')), deFormula(String(category || '')),
   ]]);
   TRA_TAB.getRange(rowIndex, 1).setNumberFormat('dd/MM/yyyy');
   getForecast();
-  return _editResponse();
+  return _editResponse_();
 }
 
 
 /** Lit les valeurs autorisées d'une colonne via sa validation de données. */
-function _listFromValidation(tab, col) {
+function _listFromValidation_(tab, col) {
   const validation = tab.getRange(2, col).getDataValidation();
   if (!validation) return [];
   const type   = validation.getCriteriaType();
@@ -940,15 +1016,16 @@ function _listFromValidation(tab, col) {
  * @returns {object} Soldes mis à jour
  */
 function addTransaction(amount, date, label, rule, category) {
-  const amt = parseFloat(amount);
-  if (!Number.isFinite(amt)) throw new Error('Montant invalide.');
-  const parts = String(date).split('-');
-  const d     = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-  if (isNaN(d)) throw new Error('Date invalide.');
+  return withUserLock_(() => addTransaction_(amount, date, label, rule, category));
+}
+
+function addTransaction_(amount, date, label, rule, category) {
+  const amt = parseAmount_(amount);
+  const d = parseDate_(date);
   const newRow = TRA_TAB.getLastRow() + 1;
   TRA_TAB.getRange(newRow, 1, 1, 5).setValues([[d, amt, deFormula(String(label || '')), deFormula(String(rule || '')), deFormula(String(category || ''))]]);
   getForecast();
-  return _editResponse();
+  return _editResponse_();
 }
 
 // ----- Prevs CRUD (Web App) ----------------------------------------------------------------------------------------------------
@@ -956,7 +1033,7 @@ function addTransaction(amount, date, label, rule, category) {
 /** Web app : retourne toutes les lignes Prevs + types distincts (col E). */
 function getPrevLines() {
   // Types depuis la validation col E — disponible même si le sheet est vide
-  const validationTypes = _listFromValidation(PRE_TAB, 5);
+  const validationTypes = _listFromValidation_(PRE_TAB, 5);
   const typesSet = new Set(validationTypes);
 
   const lastRow = PRE_TAB.getLastRow();
@@ -983,11 +1060,19 @@ function getPrevLines() {
   return { lines, types: [...typesSet].sort() };
 }
 
-function _prevRowData(d) {
-  return [d.start||'', d.end||'', d.months||'', parseFloat(d.amount)||0, d.type||'', '', d.label||'', d.rule||''];
+function _prevRowData_(d) {
+  if (!d || typeof d !== 'object') throw new Error('Prévision invalide.');
+  const start = String(d.start || '').trim(), end = String(d.end || '').trim();
+  const months = String(d.months || '').trim();
+  if ([start, end].some(v => v && !/^(0[1-9]|1[0-2])\/\d{4}$/.test(v)) ||
+      (start && end && parseMmYyyy(start) > parseMmYyyy(end)) ||
+      (months && !/^(?:[1-9]|1[0-2])(?:,(?:[1-9]|1[0-2]))*$/.test(months))) {
+    throw new Error('Période de prévision invalide.');
+  }
+  return [start, end, months, parseAmount_(d.amount), deFormula(d.type), '', deFormula(d.label), deFormula(d.rule)];
 }
 
-function _setPrevFormula(row) {
+function _setPrevFormula_(row) {
   const r = PRE_TAB.getRange(row, 6);
   r.setFormula(
     `=AND(OR(C${row}="";IFERROR(SEARCH(","&MONTH(b_date)&",";","&C${row}&",")));` +
@@ -999,32 +1084,44 @@ function _setPrevFormula(row) {
 
 /** Web app : ajoute une ligne Prevs et retourne le nouveau prévisionnel. */
 function addPrevLine(data) {
+  return withUserLock_(() => addPrevLine_(data));
+}
+
+function addPrevLine_(data) {
   const newRow = PRE_TAB.getLastRow() + 1;
-  PRE_TAB.getRange(newRow, 1, 1, 8).setValues([_prevRowData(data)]);
-  _setPrevFormula(newRow);
+  PRE_TAB.getRange(newRow, 1, 1, 8).setValues([_prevRowData_(data)]);
+  _setPrevFormula_(newRow);
   getForecast();
-  return _editResponse(true);
+  return _editResponse_(true);
 }
 
 /** Web app : modifie une ligne Prevs existante et retourne le nouveau prévisionnel. */
 function editPrevLine(rowIndex, data) {
+  return withUserLock_(() => editPrevLine_(rowIndex, data));
+}
+
+function editPrevLine_(rowIndex, data) {
   if (!Number.isInteger(rowIndex) || rowIndex < 2 || rowIndex > PRE_TAB.getLastRow()) throw new Error('Index invalide : ' + rowIndex);
-  PRE_TAB.getRange(rowIndex, 1, 1, 8).setValues([_prevRowData(data)]);
-  _setPrevFormula(rowIndex);
+  PRE_TAB.getRange(rowIndex, 1, 1, 8).setValues([_prevRowData_(data)]);
+  _setPrevFormula_(rowIndex);
   getForecast();
-  return _editResponse(true);
+  return _editResponse_(true);
 }
 
 /** Web app : supprime une ligne Prevs et retourne le nouveau prévisionnel. */
 function deletePrevLine(rowIndex) {
+  return withUserLock_(() => deletePrevLine_(rowIndex));
+}
+
+function deletePrevLine_(rowIndex) {
   if (!Number.isInteger(rowIndex) || rowIndex < 2 || rowIndex > PRE_TAB.getLastRow()) throw new Error('Index invalide : ' + rowIndex);
   PRE_TAB.deleteRow(rowIndex);
   getForecast();
-  return _editResponse(true);
+  return _editResponse_(true);
 }
 
 /** Itère sur toutes les pages de Tasks.Tasks.list('@default') et retourne le tableau plat. */
-function _listTasks(extraOpts = {}) {
+function _listTasks_(extraOpts = {}) {
   const items = [];
   let pageToken;
   do {
@@ -1038,7 +1135,7 @@ function _listTasks(extraOpts = {}) {
 }
 
 function getRevolutTasks() {
-  return _listTasks({ showCompleted: false, showHidden: false })
+  return _listTasks_({ showCompleted: false, showHidden: false })
     .filter(t => t.title && t.title.includes('Revolut'))
     .map(t => ({ id: t.id, title: t.title, notes: t.notes || '' }));
 }
@@ -1151,7 +1248,7 @@ function parseMmYyyy(str) {
 }
 
 /** Parse les colonnes A(start)/B(end)/C(months) d'une ligne Prevs en bornes mois-absolu. */
-function _parsePrevBounds(startCell, endCell, monthsCell) {
+function _parsePrevBounds_(startCell, endCell, monthsCell) {
   return {
     start:  startCell ? parseMmYyyy(String(startCell)) : null,
     end:    endCell   ? parseMmYyyy(String(endCell))   : null,
@@ -1159,7 +1256,7 @@ function _parsePrevBounds(startCell, endCell, monthsCell) {
   };
 }
 
-/** True si une ligne Prevs (bornes issues de _parsePrevBounds) s'applique au mois absolu donné. */
+/** True si une ligne Prevs (bornes issues de _parsePrevBounds_) s'applique au mois absolu donné. */
 function prevLineApplies(b, absMonth) {
   if (b.start !== null && absMonth < b.start) return false;
   if (b.end   !== null && absMonth > b.end)   return false;
@@ -1177,7 +1274,7 @@ function findPrevLines(prevData, accId, absMonth) {
   for (let i = 1; i < prevData.length; i++) {
     const p = prevData[i];
     if (String(p[4]).trim() !== accId || !p[3]) continue;
-    if (!prevLineApplies(_parsePrevBounds(p[0], p[1], p[2]), absMonth)) continue;
+    if (!prevLineApplies(_parsePrevBounds_(p[0], p[1], p[2]), absMonth)) continue;
     lines.push(i + 1);
   }
   return lines;
@@ -1191,7 +1288,7 @@ function absMonthToText(absMonth) {
 }
 
 /** Appel Enable Banking : retourne { code, json, raw }. json=null si le corps n'est pas du JSON. */
-function _ebFetchJson(url, opts) {
+function _ebFetchJson_(url, opts) {
   const resp = UrlFetchApp.fetch(url, opts);
   const raw  = resp.getContentText();
   let json = null;
@@ -1200,25 +1297,35 @@ function _ebFetchJson(url, opts) {
 }
 
 /** Extrait la liste de comptes d'une réponse session Enable Banking. */
-function _extractAccounts(body) {
+function _extractAccounts_(body) {
   return (body && (body.accounts_data || body.accounts)) || [];
 }
 
 /**
- * Web app : génère une paire de clés RSA 2048 + certificat X.509 auto-signé,
+ * Web app : reçoit une clé RSA 2048 générée par Web Crypto et crée un certificat X.509 auto-signé,
  * enregistre l'application sur Enable Banking via l'API de gestion,
  * puis stocke APP_ID et clé privée dans UserProperties.
  *
  * @param {string} bearerToken  Token Bearer du portail Enable Banking (onglet "API Keys")
  * @returns {{ appId: string } | { error: string }}
  */
-function registerEnableBankingApp(bearerToken) {
+function registerEnableBankingApp(bearerToken, privateKeyPem) {
   try {
     if (!bearerToken) return { error: 'Bearer Token requis.' };
 
-    // 1. Génération de la paire de clés RSA 2048 (via jsrsasign / KEYUTIL)
-    const keypair = KEYUTIL.generateKeypair('RSA', 2048);
-    const prvPem  = KEYUTIL.getPEM(keypair.prvKeyObj, 'PKCS8PRV');
+    // La clé est générée par Web Crypto dans le navigateur : jsrsasign se rabat
+    // sur Math.random dans GAS, qui ne fournit pas crypto.getRandomValues.
+    if (typeof privateKeyPem !== 'string' || privateKeyPem.length > 10000) {
+      return { error: 'Clé RSA requise : rechargez l’application avant de réessayer.' };
+    }
+    const prvKeyObj = KEYUTIL.getKey(privateKeyPem);
+    if (!prvKeyObj.isPrivate || !prvKeyObj.n || prvKeyObj.n.bitLength() !== 2048 || prvKeyObj.e !== 65537) {
+      return { error: 'Clé RSA 2048 invalide.' };
+    }
+    const prvPem = KEYUTIL.getPEM(prvKeyObj, 'PKCS8PRV');
+    const pubKeyObj = new RSAKey();
+    pubKeyObj.setPublic(prvKeyObj.n.toString(16), prvKeyObj.e.toString(16));
+    const keypair = { prvKeyObj, pubKeyObj };
 
     // 2. Certificat X.509 auto-signé (validité 3 ans, format YYMMDDHHMMSSZ)
     const now    = new Date();
@@ -1244,7 +1351,7 @@ function registerEnableBankingApp(bearerToken) {
     const certPem = cert.getPEM();
 
     // 3. Enregistrement de l'application sur Enable Banking
-    const { code, json: body, raw } = _ebFetchJson(EB_API_COM_ENDPOINT + '/applications', {
+    const { code, json: body, raw } = _ebFetchJson_(EB_API_COM_ENDPOINT + '/applications', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + bearerToken, 'Content-Type': 'application/json' },
       payload: JSON.stringify({
@@ -1286,7 +1393,7 @@ function registerEnableBankingApp(bearerToken) {
 function activateAppEB(bearerToken) {
   const appId = USER_PROPS.getProperty('EB_APP_ID');
   if (!appId) return { error: 'APP_ID introuvable — effectuez d\'abord l\'étape 2.' };
-  const { code, json: body, raw } = _ebFetchJson(EB_API_COM_ENDPOINT + '/link_accounts', {
+  const { code, json: body, raw } = _ebFetchJson_(EB_API_COM_ENDPOINT + '/link_accounts', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + bearerToken, 'Content-Type': 'application/json' },
     payload: JSON.stringify({
@@ -1309,7 +1416,7 @@ function activateAppEB(bearerToken) {
  * Nécessite jsrsasign.gs dans le projet GAS (KEYUTIL et KJUR globaux).
  * Renvoie les headers communs pour les appels Enable Banking.
  */
-function _enableBankingHeaders() {
+function _enableBankingHeaders_() {
   const appId = USER_PROPS.getProperty('EB_APP_ID');
   const pem   = USER_PROPS.getProperty('EB_PRIVATE_KEY');
   if (!appId || !pem) {
@@ -1334,9 +1441,9 @@ function setupEnableBankingWeb() {
     const state     = Utilities.getUuid();
     USER_PROPS.setProperty('EB_STATE', state);
     const validUntil = new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString();
-    const { json: body, raw } = _ebFetchJson(EB_API_SUB_ENDPOINT + '/auth', {
+    const { json: body, raw } = _ebFetchJson_(EB_API_SUB_ENDPOINT + '/auth', {
       method: 'POST',
-      headers: _enableBankingHeaders(),
+      headers: _enableBankingHeaders_(),
       payload: JSON.stringify({
         aspsp:        { name: 'Revolut', country: 'FR' },
         state,
@@ -1359,13 +1466,13 @@ function setupEnableBankingWeb() {
  * @param {string} code  — code OAuth reçu en query param
  * @param {string} state — état renvoyé par Enable Banking (protection CSRF)
  */
-function _exchangeEnableBankingCode(code, state) {
+function _exchangeEnableBankingCode_(code, state) {
   const expected = USER_PROPS.getProperty('EB_STATE');
   if (!expected || state !== expected) throw new Error('State mismatch — possible CSRF, import annulé.');
 
-  const { json: body, raw } = _ebFetchJson(EB_API_SUB_ENDPOINT + '/sessions', {
+  const { json: body, raw } = _ebFetchJson_(EB_API_SUB_ENDPOINT + '/sessions', {
     method: 'POST',
-    headers: _enableBankingHeaders(),
+    headers: _enableBankingHeaders_(),
     payload: JSON.stringify({ code }),
     muteHttpExceptions: true,
   });
@@ -1373,16 +1480,16 @@ function _exchangeEnableBankingCode(code, state) {
   if (!body || !body.session_id) throw new Error('Échange de code Enable Banking échoué — ' + raw);
 
   USER_PROPS.setProperty('EB_SESSION_ID', body.session_id);
-  const sess = _ebFetchJson(EB_API_SUB_ENDPOINT + '/sessions/' + body.session_id, {
-    headers: _enableBankingHeaders(), muteHttpExceptions: true,
+  const sess = _ebFetchJson_(EB_API_SUB_ENDPOINT + '/sessions/' + body.session_id, {
+    headers: _enableBankingHeaders_(), muteHttpExceptions: true,
   });
 
   if (sess.code !== 200) throw new Error('Enable Banking : ' + sess.raw);
-  const accounts = _extractAccounts(sess.json);
+  const accounts = _extractAccounts_(sess.json);
 
   if (!accounts.length) throw new Error('Enable Banking — Aucun compte white-listé.');
 
-  _storeAccounts(accounts);
+  _storeAccounts_(accounts);
   USER_PROPS.deleteProperty('EB_STATE');
 }
 
@@ -1391,7 +1498,7 @@ function _exchangeEnableBankingCode(code, state) {
  * sur le premier compte ayant un IBAN (sinon le premier compte EUR, sinon le premier).
  * Si l'IBAN est absent, tente un appel GET /accounts/{uid} pour le récupérer.
  */
-function _storeAccounts(accounts) {
+function _storeAccounts_(accounts) {
   const accountsData = accounts.map(a => {
     const uid      = a.uid || '';
     let   details  = null;
@@ -1401,8 +1508,8 @@ function _storeAccounts(accounts) {
     // IBAN absent de la réponse session → le récupérer via /details (évité si déjà présent)
     if (!iban && uid) {
       try {
-        const { code, json: data } = _ebFetchJson(EB_API_SUB_ENDPOINT + '/accounts/' + uid + '/details', {
-          headers: _enableBankingHeaders(), muteHttpExceptions: true,
+        const { code, json: data } = _ebFetchJson_(EB_API_SUB_ENDPOINT + '/accounts/' + uid + '/details', {
+          headers: _enableBankingHeaders_(), muteHttpExceptions: true,
         });
         if (code === 200 && data) {
           iban    = data.account_id?.iban || '';
@@ -1429,14 +1536,14 @@ function refreshLinkedAccountsWeb() {
     const sessionId = USER_PROPS.getProperty('EB_SESSION_ID');
     if (!sessionId) return { error: 'Aucune session active — relancez l\'étape 4.' };
 
-    const { code, json, raw } = _ebFetchJson(EB_API_SUB_ENDPOINT + '/sessions/' + sessionId, {
-      headers: _enableBankingHeaders(), muteHttpExceptions: true,
+    const { code, json, raw } = _ebFetchJson_(EB_API_SUB_ENDPOINT + '/sessions/' + sessionId, {
+      headers: _enableBankingHeaders_(), muteHttpExceptions: true,
     });
     if (code !== 200) return { error: 'Enable Banking : ' + raw };
-    const accounts = _extractAccounts(json);
+    const accounts = _extractAccounts_(json);
     if (!accounts.length) return { error: 'Aucun compte trouvé dans la session.' };
 
-    _storeAccounts(accounts);
+    _storeAccounts_(accounts);
     return { mainUid: USER_PROPS.getProperty('EB_ACCOUNT_ID') };
   } catch(e) {
     return { error: e.message };
@@ -1444,7 +1551,7 @@ function refreshLinkedAccountsWeb() {
 }
 
 /** Extrait le solde disponible d'une réponse /balances (interimAvailable, sinon premier). */
-function _parseBalance(json) {
+function _parseBalance_(json) {
   if (!json) return null;
   const bals = json.balances || [];
   const bal  = bals.find(b => b.balance_type === 'interimAvailable') || bals[0];
@@ -1457,9 +1564,9 @@ function _parseBalance(json) {
  * @param {{uid:string}[]} accounts
  * @returns {object[]} les comptes enrichis d'un champ `balance` (null si échec)
  */
-function _getAccountBalances(accounts) {
+function _getAccountBalances_(accounts) {
   if (!accounts.length) return [];
-  const headers  = _enableBankingHeaders(); // même JWT valable pour toutes les requêtes
+  const headers  = _enableBankingHeaders_(); // même JWT valable pour toutes les requêtes
   const requests = accounts.map(a => ({
     url: EB_API_SUB_ENDPOINT + '/accounts/' + a.uid + '/balances',
     headers, muteHttpExceptions: true,
@@ -1472,7 +1579,7 @@ function _getAccountBalances(accounts) {
     let balance = null;
     try {
       const resp = resps[i];
-      if (resp.getResponseCode() === 200) balance = _parseBalance(JSON.parse(resp.getContentText()));
+      if (resp.getResponseCode() === 200) balance = _parseBalance_(JSON.parse(resp.getContentText()));
     } catch (_) {}
     return { ...a, balance };
   });
@@ -1491,7 +1598,7 @@ function getLinkedAccounts() {
 function setShownAccounts(uids) {
   USER_PROPS.setProperty('EB_SHOWN_ACCOUNTS', JSON.stringify(uids));
   const allAccounts = JSON.parse(USER_PROPS.getProperty('EB_ALL_ACCOUNTS') || '[]');
-  return _getAccountBalances(allAccounts.filter(({ uid }) => uids.includes(uid)));
+  return _getAccountBalances_(allAccounts.filter(({ uid }) => uids.includes(uid)));
 }
 
 // Règles budgétaires valides (whitelist anti-injection pour confirmRevolutImport). '' = crédit non catégorisé.
@@ -1506,12 +1613,12 @@ const AMOUNT_HINT_MIN_COUNT = 3;
  * espaces internes réduits. Volontairement conservateur (pas de suppression de chiffres) :
  * le matching de suggestion se veut « libellé exact ».
  */
-function _normLabel(s) {
+function _normLabel_(s) {
   return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 /** Lit les lignes de données [date, montant, label, règle, catégorie] d'un onglet (sans en-tête ; [] si vide). */
-function _readCatRows(tab) {
+function _readCatRows_(tab) {
   if (!tab) return [];
   const lastRow = tab.getLastRow();
   return lastRow < 2 ? [] : tab.getRange(2, 1, lastRow - 1, 5).getValues();
@@ -1524,7 +1631,7 @@ function _readCatRows(tab) {
  * la plus récente → passer Archives puis Trans). Les lignes sans règle ni catégorie sont ignorées.
  * @returns {Map<string, {rule:string, category:string}>}
  */
-function _indexHints(rows, keyOf, minCount) {
+function _indexHints_(rows, keyOf, minCount) {
   const byKey = new Map(); // key -> { total, combos: Map(combo -> { count, seq, rule, category }) }
   let seq = 0;
   for (const r of rows) {
@@ -1556,13 +1663,13 @@ function _indexHints(rows, keyOf, minCount) {
 }
 
 /** Suggestions par libellé exact normalisé (toutes fréquences retenues). */
-function _indexCategoryHints(rows) {
-  return _indexHints(rows, r => _normLabel(r[2]), 0);
+function _indexCategoryHints_(rows) {
+  return _indexHints_(rows, r => _normLabel_(r[2]), 0);
 }
 
 /** Suggestions par montant exact, uniquement s'il a été catégorisé plus de AMOUNT_HINT_MIN_COUNT fois. */
-function _indexAmountHints(rows) {
-  return _indexHints(rows, r => {
+function _indexAmountHints_(rows) {
+  return _indexHints_(rows, r => {
     const a = roundCent(r[1]);
     return isFinite(a) && a !== 0 ? a : null;
   }, AMOUNT_HINT_MIN_COUNT);
@@ -1575,60 +1682,69 @@ function _indexAmountHints(rows) {
  * Pré-remplit règle/catégorie d'après l'historique (Trans + Archives) pour un libellé identique.
  * @returns {{key:string,isoDate:string,amount:number,label:string,rule:string,category:string}[]}
  */
-function _scanRevolutCandidates() {
+function _scanRevolutCandidates_() {
   const accountId = USER_PROPS.getProperty('EB_ACCOUNT_ID');
   if (!accountId) throw new Error('Aucune connexion à vos comptes.');
 
   const dateFrom = Utilities.formatDate(BUD_DATE.getValue(), 'Europe/Paris', 'yyyy-MM-dd');
 
-  const { code, json, raw } = _ebFetchJson(
-    EB_API_SUB_ENDPOINT + '/accounts/' + accountId + '/transactions?date_from=' + dateFrom,
-    { headers: _enableBankingHeaders(), muteHttpExceptions: true }
-  );
+  const transactions = [];
+  const headers = _enableBankingHeaders_();
+  const seenTokens = new Set();
+  let token = '';
+  do {
+    const { code, json, raw } = _ebFetchJson_(
+      EB_API_SUB_ENDPOINT + '/accounts/' + encodeURIComponent(accountId) + '/transactions?date_from=' + dateFrom +
+        (token ? '&continuation_key=' + encodeURIComponent(token) : ''),
+      { headers, muteHttpExceptions: true }
+    );
+    if (code === 401 || code === 403) throw new Error('Session expirée ou révoquée. Relancez l\'étape 4.');
+    if (code !== 200) throw new Error((json && json.message) || raw);
+    transactions.push(...((json && json.transactions) || []));
+    token = (json && json.continuation_key) || '';
+    if (token && seenTokens.has(token)) throw new Error('Pagination bancaire invalide.');
+    seenTokens.add(token);
+  } while (token);
 
-  if (code === 401 || code === 403) throw new Error('Session expirée ou révoquée. Relancez l\'étape 4.');
-  if (code !== 200) throw new Error((json && json.message) || raw);
-
-  const transactions = (json && json.transactions) || [];
-
-  // Déduplication : liste (et non Set) des lignes existantes dans Trans.
-  // Chaque correspondance est retirée (splice) pour permettre plusieurs transactions
-  // identiques (même date, montant, libellé) sans les traiter comme doublons.
+  // Compter les occurrences : déduplication linéaire, avec doublons légitimes conservés.
   const traLastRow = TRA_TAB.getLastRow();
-  const existing   = traLastRow >= 2
+  const existingKeys = traLastRow >= 2
     ? TRA_TAB.getRange(2, 1, traLastRow - 1, 3).getValues().map(r =>
         Utilities.formatDate(new Date(r[0]), 'Europe/Paris', 'yyyy-MM-dd') + '|' + r[1] + '|' + String(r[2]).trim().toLowerCase()
       )
     : [];
+  const existing = new Map();
+  for (const key of existingKeys) existing.set(key, (existing.get(key) || 0) + 1);
 
   // Suggestions règle/catégorie : couple le plus utilisé pour un libellé identique, avec repli
   // sur le montant s'il a été catégorisé plus de AMOUNT_HINT_MIN_COUNT fois (achat récurrent).
   // Archives (ancien) puis Trans (récent) : Trans départage en cas d'égalité de fréquence.
-  const history     = [].concat(_readCatRows(ARC_TAB), _readCatRows(TRA_TAB));
-  const labelHints  = _indexCategoryHints(history);
-  const amountHints = _indexAmountHints(history);
+  const history     = [].concat(_readCatRows_(ARC_TAB), _readCatRows_(TRA_TAB));
+  const labelHints  = _indexCategoryHints_(history);
+  const amountHints = _indexAmountHints_(history);
 
   const candidates = [];
 
   for (const t of transactions) {
-    if (!t.transaction_amount) continue;
+    if (!t.transaction_amount || (t.transaction_amount.currency && t.transaction_amount.currency !== 'EUR')) continue;
     const isDbit    = t.credit_debit_indicator === 'DBIT';
     const date      = t.booking_date;
-    const rawAmount = parseFloat(t.transaction_amount.amount);
+    const rawAmount = Number(t.transaction_amount.amount);
+    if (!Number.isFinite(rawAmount) || !date || date.slice(0, 7) !== dateFrom.slice(0, 7)) continue;
     const amount    = isDbit ? -rawAmount : rawAmount;
-    const xtorName  = isDbit ? t.creditor.name : t.debtor.name;
-    const label     = (t.remittance_information?.[0] || xtorName || t.entry_reference).trim();
+    const xtorName  = isDbit ? t.creditor?.name : t.debtor?.name;
+    const label     = String(t.remittance_information?.[0] || xtorName || t.entry_reference || '').trim();
     const key       = date + '|' + amount + '|' + label.toLowerCase();
 
-    const idx = existing.indexOf(key);
-    if (idx !== -1) { existing.splice(idx, 1); continue; }
+    const count = existing.get(key) || 0;
+    if (count) { existing.set(key, count - 1); continue; }
 
-    const hint = labelHints.get(_normLabel(label)) || amountHints.get(roundCent(amount));
+    const hint = labelHints.get(_normLabel_(label)) || amountHints.get(roundCent(amount));
     candidates.push({
       key:      String(candidates.length), // identifiant de sélection stable (position dans le scan)
       isoDate:  date,
       amount:   roundCent(amount),
-      label:    deFormula(label),
+      label,
       rule:     hint ? hint.rule     : (isDbit ? 'Envies' : ''),
       category: hint ? hint.category : (isDbit ? 'Unknown' : ''),
     });
@@ -1637,12 +1753,11 @@ function _scanRevolutCandidates() {
 }
 
 /** Écrit des lignes [date, montant, label, règle, catégorie] dans Trans et rafraîchit le forecast. */
-function _commitRevolutRows(rows) {
+function _commitRevolutRows_(rows) {
   const firstNewRow = TRA_TAB.getLastRow() + 1;
   TRA_TAB.getRange(firstNewRow, 1, rows.length, 5).setValues(rows);
   TRA_TAB.getRange(firstNewRow, 1, rows.length, 1).setNumberFormat('dd/MM/yyyy');
   invalidateCache();
-  getForecast();
 }
 
 /**
@@ -1653,9 +1768,15 @@ function _commitRevolutRows(rows) {
  * @returns {{ candidates: object[] }}
  */
 function previewRevolutImport() {
+  return withUserLock_(() => previewRevolutImport_());
+}
+
+function previewRevolutImport_() {
   try {
-    const candidates = _scanRevolutCandidates();
-    try { CacheService.getUserCache().put(EB_IMPORT_CACHE_KEY, JSON.stringify(candidates), 600); } catch (_) {}
+    CACHE.remove(EB_IMPORT_CACHE_KEY);
+    const snapshotId = Utilities.getUuid();
+    const candidates = _scanRevolutCandidates_().map((c, i) => ({ ...c, key: snapshotId + ':' + i }));
+    CACHE.put(EB_IMPORT_CACHE_KEY, JSON.stringify(candidates), 600);
     return { candidates };
   } catch (_) {
     return { candidates: [] };
@@ -1670,24 +1791,29 @@ function previewRevolutImport() {
  * @returns {{ imported:number, ...getAllData() }}
  */
 function confirmRevolutImport(selections) {
+  return withUserLock_(() => confirmRevolutImport_(selections));
+}
+
+function confirmRevolutImport_(selections) {
   if (!Array.isArray(selections) || selections.length === 0) return { imported: 0, ...getAllData() };
 
-  const cached = CacheService.getUserCache().get(EB_IMPORT_CACHE_KEY);
-  const candidates = cached ? JSON.parse(cached) : _scanRevolutCandidates(); // fallback : cache expiré
-  const byKey = {};
-  candidates.forEach(c => { byKey[c.key] = c; });
+  const cached = CACHE.get(EB_IMPORT_CACHE_KEY);
+  if (!cached) throw new Error('Aperçu expiré : rechargez les transactions avant de valider.');
+  const candidates = JSON.parse(cached);
+  const byKey = new Map(candidates.map(c => [c.key, c]));
 
   const rows = [];
   for (const sel of selections) {
-    const c = byKey[sel && sel.key];
+    const c = byKey.get(sel && sel.key);
     if (!c) continue;
+    byKey.delete(sel.key);
     const rule = REVOLUT_RULES.includes(sel.rule) ? sel.rule : '';
-    rows.push([new Date(c.isoDate), c.amount, deFormula(c.label), rule, deFormula(String(sel.category || ''))]);
+    rows.push([parseDate_(c.isoDate), parseAmount_(c.amount), deFormula(c.label), rule, deFormula(String(sel.category || ''))]);
   }
 
   if (rows.length === 0) return { imported: 0, ...getAllData() };
 
-  _commitRevolutRows(rows);
+  _commitRevolutRows_(rows);
   try { CacheService.getUserCache().remove(EB_IMPORT_CACHE_KEY); } catch (_) {}
   return { imported: rows.length, ...getAllData() };
 }
@@ -1706,8 +1832,8 @@ function getAllData() {
     .map(a => ({ ...a, balance: null }));
 
   return {
-    forecastInputs:      _forecastInputs(),       // calcul du forecast côté client (AlfredForecast)
-    monthTransactions:   _getMonthTransactions(), // transactions du mois courant (formatage serveur)
+    forecastInputs:      _forecastInputs_(),       // calcul du forecast côté client (AlfredForecast)
+    monthTransactions:   _getMonthTransactions_(), // transactions du mois courant (formatage serveur)
     savingsProps:        getSavingsProps(undefined, up),
     shownAccounts,
     tasks:               getRevolutTasks(),
@@ -1724,7 +1850,7 @@ function getAccountBalances() {
   try {
     const allAccounts = JSON.parse(USER_PROPS.getProperty('EB_ALL_ACCOUNTS') || '[]');
     const shownUids   = JSON.parse(USER_PROPS.getProperty('EB_SHOWN_ACCOUNTS') || '[]');
-    return _getAccountBalances(allAccounts.filter(({ uid }) => shownUids.includes(uid)));
+    return _getAccountBalances_(allAccounts.filter(({ uid }) => shownUids.includes(uid)));
   } catch (_) {
     return [];
   }
@@ -1744,7 +1870,7 @@ const MAMMOTH_DEFAULT_MSG =
  * @param {{budget:number, budgetInit:number}} cur  mois courant (forecast client)
  */
 function maybeAlertMammoth(cur) {
-  _maybeAlertMammoth(cur, USER_PROPS.getProperties());
+  _maybeAlertMammoth_(cur, USER_PROPS.getProperties());
 }
 
 /**
@@ -1755,7 +1881,7 @@ function maybeAlertMammoth(cur) {
  * @param {object|undefined} cur  mois courant du forecast ({ budget, budgetInit, ... })
  * @param {object} up             USER_PROPS.getProperties() (réutilisé, pas de relecture)
  */
-function _maybeAlertMammoth(cur, up) {
+function _maybeAlertMammoth_(cur, up) {
   try {
     if (up['alfred_mammothEnabled'] !== 'true') return;
     const email = (up['alfred_mammothEmail'] || '').trim();

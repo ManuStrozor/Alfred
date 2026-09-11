@@ -11,17 +11,17 @@ describe('roundCent', () => {
   test('négatif', () => expect(g.roundCent(-2.346)).toBe(-2.35));
 });
 
-// ─── _parsePrevBounds ────────────────────────────────────────────────────────
-describe('_parsePrevBounds', () => {
+// ─── _parsePrevBounds_ ────────────────────────────────────────────────────────
+describe('_parsePrevBounds_', () => {
   test('start/end/months parsés', () => {
-    const b = g._parsePrevBounds('01/2025', '12/2025', '3,6');
+    const b = g._parsePrevBounds_('01/2025', '12/2025', '3,6');
     expect(b.start).toBe(g.parseMmYyyy('01/2025'));
     expect(b.end).toBe(g.parseMmYyyy('12/2025'));
     expect([...b.months]).toEqual([3, 6]);
   });
 
   test('cellules vides → null', () => {
-    const b = g._parsePrevBounds('', '', '');
+    const b = g._parsePrevBounds_('', '', '');
     expect(b.start).toBeNull();
     expect(b.end).toBeNull();
     expect(b.months).toBeNull();
@@ -34,81 +34,81 @@ describe('prevLineApplies', () => {
   const june2025 = g.parseMmYyyy('06/2025');
 
   test('dans la plage → true', () => {
-    const b = g._parsePrevBounds('01/2025', '12/2025', '');
+    const b = g._parsePrevBounds_('01/2025', '12/2025', '');
     expect(g.prevLineApplies(b, june2025)).toBe(true);
   });
 
   test('avant start → false', () => {
-    const b = g._parsePrevBounds('07/2025', '', '');
+    const b = g._parsePrevBounds_('07/2025', '', '');
     expect(g.prevLineApplies(b, june2025)).toBe(false);
   });
 
   test('après end → false', () => {
-    const b = g._parsePrevBounds('', '05/2025', '');
+    const b = g._parsePrevBounds_('', '05/2025', '');
     expect(g.prevLineApplies(b, june2025)).toBe(false);
   });
 
   test('filtre mensuel : juin actif, mai non', () => {
-    const b = g._parsePrevBounds('', '', '6'); // mois n°6 = juin
+    const b = g._parsePrevBounds_('', '', '6'); // mois n°6 = juin
     expect(g.prevLineApplies(b, june2025)).toBe(true);
     expect(g.prevLineApplies(b, may2025)).toBe(false);
   });
 
   test('sans borne ni mois → toujours actif', () => {
-    expect(g.prevLineApplies(g._parsePrevBounds('', '', ''), june2025)).toBe(true);
+    expect(g.prevLineApplies(g._parsePrevBounds_('', '', ''), june2025)).toBe(true);
   });
 });
 
-// ─── _extractAccounts ────────────────────────────────────────────────────────
-describe('_extractAccounts', () => {
-  test('accounts_data prioritaire', () => expect(g._extractAccounts({ accounts_data: [1], accounts: [2] })).toEqual([1]));
-  test('fallback accounts', () => expect(g._extractAccounts({ accounts: [2] })).toEqual([2]));
-  test('objet vide → []', () => expect(g._extractAccounts({})).toEqual([]));
-  test('null → []', () => expect(g._extractAccounts(null)).toEqual([]));
+// ─── _extractAccounts_ ────────────────────────────────────────────────────────
+describe('_extractAccounts_', () => {
+  test('accounts_data prioritaire', () => expect(g._extractAccounts_({ accounts_data: [1], accounts: [2] })).toEqual([1]));
+  test('fallback accounts', () => expect(g._extractAccounts_({ accounts: [2] })).toEqual([2]));
+  test('objet vide → []', () => expect(g._extractAccounts_({})).toEqual([]));
+  test('null → []', () => expect(g._extractAccounts_(null)).toEqual([]));
 });
 
-// ─── _parseBalance ───────────────────────────────────────────────────────────
-describe('_parseBalance', () => {
+// ─── _parseBalance_ ───────────────────────────────────────────────────────────
+describe('_parseBalance_', () => {
   test('préfère interimAvailable', () => {
     const json = { balances: [
       { balance_type: 'expected', balance_amount: { amount: '99' } },
       { balance_type: 'interimAvailable', balance_amount: { amount: '12.5' } },
     ] };
-    expect(g._parseBalance(json)).toBe(12.5);
+    expect(g._parseBalance_(json)).toBe(12.5);
   });
 
   test('sinon le premier solde', () =>
-    expect(g._parseBalance({ balances: [{ amount: '7' }] })).toBe(7));
+    expect(g._parseBalance_({ balances: [{ amount: '7' }] })).toBe(7));
 
-  test('aucun solde → null', () => expect(g._parseBalance({ balances: [] })).toBeNull());
-  test('json null → null', () => expect(g._parseBalance(null)).toBeNull());
+  test('aucun solde → null', () => expect(g._parseBalance_({ balances: [] })).toBeNull());
+  test('json null → null', () => expect(g._parseBalance_(null)).toBeNull());
 });
 
-// ─── getCached / invalidateCache ─────────────────────────────────────────────
-describe('getCached / invalidateCache', () => {
+// ─── getCached_ / invalidateCache ─────────────────────────────────────────────
+describe('getCached_ / invalidateCache', () => {
   test('1er appel calcule + met en cache, 2e appel sert le cache', () => {
     const gg = loadAlfred();
     let calls = 0;
     const fn = () => { calls++; return { v: 42 }; };
-    expect(gg.getCached('k', fn)).toEqual({ v: 42 });
-    expect(gg.getCached('k', () => { throw new Error('ne doit pas être appelé'); })).toEqual({ v: 42 });
+    expect(gg.getCached_('k', fn)).toEqual({ v: 42 });
+    expect(gg.getCached_('k', () => { throw new Error('ne doit pas être appelé'); })).toEqual({ v: 42 });
     expect(calls).toBe(1);
   });
 
-  test('invalidateCache supprime budget_rules, garde le reste (forecast non caché)', () => {
+  test('invalidateCache supprime les données dépendantes du classeur', () => {
     const gg = loadAlfred();
     gg._cacheStore.set('budget_rules', '1');
     gg._cacheStore.set('gemini_insight', '1');
     gg.invalidateCache();
     expect(gg._cacheStore.has('budget_rules')).toBe(false);
-    expect(gg._cacheStore.has('gemini_insight')).toBe(true);
+    expect(gg._cacheStore.has('gemini_insight')).toBe(false);
   });
 });
 
-// ─── _getClosingDates ────────────────────────────────────────────────────────
-describe('_getClosingDates', () => {
+// ─── _getClosingDates_ ────────────────────────────────────────────────────────
+describe('_getClosingDates_', () => {
   test('juin 2026 → 06/2026 + 1er juillet', () => {
-    const r = g._getClosingDates(new Date(2026, 5, 1));
+    const r = g._getClosingDates_(new Date(2026, 5, 1));
     expect(r.closingMonth).toBe(5);
     expect(r.closingYear).toBe(2026);
     expect(r.closingStr).toBe('06/2026');
@@ -116,7 +116,7 @@ describe('_getClosingDates', () => {
   });
 
   test('décembre → bascule sur janvier suivant', () => {
-    const r = g._getClosingDates(new Date(2025, 11, 1));
+    const r = g._getClosingDates_(new Date(2025, 11, 1));
     expect(r.closingStr).toBe('12/2025');
     expect(r.nextDate).toEqual(new Date(2026, 0, 1));
   });

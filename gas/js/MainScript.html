@@ -406,9 +406,8 @@
 
   function _maybeShowGemini() {
     if (_geminiDone || $('splash')?.classList.contains('is-hidden')) return;
-    const GK = 'alfred_gemini_cache';
-    const local = (_ => { try { return JSON.parse(localStorage.getItem(GK) || 'null'); } catch (_) { return null; } })();
-    const clientKey = local?.key || null;
+    // Les conseils financiers restent dans le cache serveur propre à l'utilisateur.
+    try { localStorage.removeItem('alfred_gemini_cache'); } catch (_) { }
 
     const onSuccess = data => {
       if (!data || data.noKey || data.error) {
@@ -416,20 +415,14 @@
         _splashHideGemini();
         return;
       }
-      if (data.cached) {
-        if (local?.message) _splashShowInsight(local.message);
-        else _splashHideGemini();
-        return;
-      }
       if (data.message) {
-        try { localStorage.setItem(GK, JSON.stringify({ key: data.key, message: data.message, ts: Date.now() })); } catch (_) { }
         _splashShowInsight(data.message);
       } else _splashHideGemini();
     };
 
     const cur = allMonths.find(m => m.isCurrent) || allMonths[0] || {};
     runner('Gemini', onSuccess, _splashHideGemini)
-      .getGeminiInsight(clientKey, { month: cur.month, budget: cur.budget, lep: cur.lep, la: cur.la });
+      .getGeminiInsight(null, { month: cur.month, budget: cur.budget, lep: cur.lep, la: cur.la });
   }
 
 
@@ -1372,12 +1365,29 @@
     ));
   }
 
-  $('btn-conn-register').addEventListener('click', e => {
+  async function _generateBankingKey() {
+    const pair = await crypto.subtle.generateKey({
+      name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256',
+    }, true, ['sign', 'verify']);
+    const bytes = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey));
+    const base64 = btoa(String.fromCharCode(...bytes));
+    return '-----BEGIN PRIVATE KEY-----\n' + base64.match(/.{1,64}/g).join('\n') + '\n-----END PRIVATE KEY-----';
+  }
+
+  $('btn-conn-register').addEventListener('click', async e => {
     const bearer = $('conn-bearer').value.trim();
     if (!bearer) { showToast('⚠️ Bearer Token requis (étape 1).', 5000); return; }
+    const restore = _spinBtn(e.target);
+    let privateKeyPem;
+    try { privateKeyPem = await _generateBankingKey(); }
+    catch (_) {
+      showToast('❌ Génération sécurisée de la clé indisponible.', 5000);
+      return;
+    } finally { restore(); }
     _runConnectStep({
       btn: e.target,
-      invoke: r => r.registerEnableBankingApp(bearer),
+      invoke: r => r.registerEnableBankingApp(bearer, privateKeyPem),
       onOk: data => {
         _cache.props = null;
         showToast(data.linkError ? '⚠️ Liaison ASPSP : ' + data.linkError : '✅ Application enregistrée', 5000);
@@ -1838,7 +1848,7 @@
     }
     const restore = _spinBtn(btn);
     // Soldes épargne calculés côté client (source de vérité pour Historique) ;
-    // null → le serveur retombe sur les soldes écrits dans Budgets (transitionnel).
+    // null → le serveur refuse la clôture pour éviter un historique incomplet.
     const balances = _cache.cur && _cache.cur.lep != null
       ? { lep: _cache.cur.lep, la: _cache.cur.la, csl: _cache.cur.csl }
       : null;
@@ -1851,7 +1861,7 @@
       loadBudgetRules();
       const diff = result.diff >= 0 ? `+${result.diff}` : `${result.diff}`;
       showToast(`✅ ${result.closedMonth} clôturé · solde ${diff} € · ${result.archivedCount} transaction(s) archivée(s)`);
-    }, restore).paydayWeb(salary, balances);
+    }, restore).paydayWeb(salary, balances, _cache.cur?.month);
   });
 
   /* ── Splash screen ───────────────────────────────────────────── */

@@ -34,12 +34,12 @@ function geminiOkResponse(text) {
 // ── Setup commun ──────────────────────────────────────────────────────────
 function setup({ apiKey = 'valid-api-key', cachePreset = {}, fetchResponse = null } = {}) {
   const g = loadAlfred();
-  // Pré-charger le forecast en cache pour que getCached() retourne FAKE_FORECAST
+  // Pré-charger le forecast en cache pour que getCached_() retourne FAKE_FORECAST
   g._cacheStore.set('forecast', FAKE_FORECAST);
   // Configurer les autres entrées de cache
   Object.entries(cachePreset).forEach(([k, v]) => g._cacheStore.set(k, v));
   // Clé API
-  if (apiKey) g._propStore.set('GEMINI_API_KEY', apiKey);
+  if (apiKey) g._scriptStore.set('GEMINI_API_KEY', apiKey);
   // Mock UrlFetchApp.fetch
   if (fetchResponse) g._setFetch(() => fetchResponse);
   return g;

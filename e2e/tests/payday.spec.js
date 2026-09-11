@@ -35,5 +35,6 @@ test.describe('Payday & Mammouth (Phase 3)', () => {
     expect(call.args[0]).toBe(2000);
     // soldes issus du mois courant de la fixture (lep/la/csl)
     expect(call.args[1]).toEqual({ lep: 8000, la: 20000, csl: 0 });
+    expect(call.args[2]).toMatch(/^\d{2}\/\d{4}$/);
   });
 });

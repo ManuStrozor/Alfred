@@ -4,10 +4,13 @@
 
 Outil de **prévisionnel budgétaire** et de **suivi d'épargne** sur plusieurs mois, composé de deux parties complémentaires :
 
-- **`gas/Alfred.js`** — backend Google Apps Script (endpoints Web App + CRUD Sheets + forecast + Enable Banking)
+- **`gas/Alfred.js`** — backend Google Apps Script (endpoints Web App, CRUD Sheets, données de calcul et Enable Banking)
+- **`gas/js/Forecast.html`** — moteur de calcul budgétaire et d’épargne exécuté dans le navigateur
 - **Web app** — SPA mobile-first (GAS HtmlService, servie dans une iframe sandbox) pour consulter les soldes, ajouter des transactions, estimer une dépense et clôturer le mois depuis un smartphone
 
 Alfred est **multi-utilisateur** : chaque personne enregistre son propre classeur Google Sheets ; ses données ne sont jamais partagées avec les autres.
+
+L’[audit du 11 septembre 2026](AUDIT.md) décrit les correctifs de sécurité, les vérifications et les limites restantes, ainsi que les actions à réaliser avant remise en production.
 
 ---
 
@@ -42,6 +45,8 @@ Déclencheur central : `b_date = Budgets!A3` (1er du mois courant), avancé à c
 | `A3` | Date de départ | Objet Date Google Sheets (ex : `01/01/2025`) |
 
 ### Colonnes de sortie (onglet `Budgets`)
+
+Ces cellules appartiennent au fonctionnement historique : le backend ne les alimente plus. Les soldes affichés et transmis à la clôture sont calculés dans le navigateur.
 
 | Colonne | Contenu | Ligne de départ |
 |---|---|---|
@@ -100,7 +105,7 @@ Aucune saisie manuelle d'ID/URL n'est nécessaire : l'ID du classeur est stocké
 L'import des transactions Revolut utilise l'API [Enable Banking](https://enablebanking.com). Tout se configure **dans l'application** via le modal **Comptes → Connecter** (4 étapes) :
 
 1. **Bearer Token** — créer un compte sur [enablebanking.com](https://enablebanking.com) et récupérer le Bearer Token du portail.
-2. **Enregistrer l'application** — Alfred génère une paire de clés RSA + un certificat X.509 auto-signé et enregistre l'application (`registerEnableBankingApp` → `POST /applications`).
+2. **Enregistrer l'application** — Web Crypto génère une clé RSA 2048 dans le navigateur ; le backend reçoit son export PKCS8, construit le certificat X.509 et enregistre l'application (`registerEnableBankingApp` → `POST /applications`).
 3. **Activer l'application** — lien d'activation sur le compte bancaire (`activateAppEB` → `POST /link_accounts`).
 4. **Autoriser l'accès** — consentement PSD2 (`setupEnableBankingWeb` → `POST /auth` → OAuth → `doGet(?code=)` → `_exchangeEnableBankingCode` → session + comptes).
 
@@ -113,7 +118,7 @@ Les clés et la session sont stockées dans les `UserProperties` préfixées `EB
 | **UserProperties** (par compte) | `alfred_sheet_id`, prefs `alfred_*`, `LEP_*` / `LA_*` / `CSL_NAME`, `EB_*` | Données et préférences propres à chaque utilisateur |
 | **ScriptProperties** (partagées) | `GEMINI_API_KEY`, `CACHE_TTL`, `ALFRED_OWNER`, `ALFRED_TEMPLATE_ID` | Configuration globale, visible/éditable par le propriétaire uniquement |
 
-`getUserProp(key, fallback)` résout dans l'ordre : UserProperties → ScriptProperties (migration) → défaut.
+`getUserProp_(key, fallback)` résout dans l'ordre : UserProperties → ScriptProperties (migration réservée au propriétaire identifié) → défaut. Les helpers sensibles portent un underscore final pour être privés dans Apps Script.
 
 ---
 
@@ -199,7 +204,7 @@ Le code est poussé vers Google Apps Script via **clasp** + **GitHub Actions** :
 
 **Détection de dépassement de plafond** — après chaque calcul, vérification du plafond LEP (10 000 €) / Livret A (22 950 €). Si le dépassement vient uniquement de la capitalisation des intérêts, rien n'est signalé ; s'il vient d'un versement planifié dans `Prevs`, un toast indique le mois et les lignes responsables.
 
-**Cache serveur** (`CacheService`) — `forecast` et `budget_rules` invalidés par `invalidateCache()` ; `gemini_insight` (TTL 60 s) expire naturellement.
+**Cache serveur** (`CacheService.getUserCache()`) — propre à chaque utilisateur. Les écritures invalident les conseils Gemini et les aperçus bancaires. Un aperçu expiré doit être renouvelé avant confirmation. Aucun prévisionnel n’est mis en cache côté serveur et les conseils financiers ne sont plus conservés dans localStorage.
 
 ---
 
@@ -213,34 +218,33 @@ Onboarding / multi-user
 
 Préférences & propriétés
   getUserPrefs() / setUserPref()    ← prefs UI typées (ALFRED_PREF_DEFAULTS)
-  getUserProp() · getProp() / setProp()
+  getUserProp_() · getProp_() / setProp_()  ← helpers privés
   getSavingsProps() · getAllProps() · setAnyProp() · deleteProp()
 
-Pipeline de calcul (forecast)
-  getForecast() / _getFullForecast()  ← lecture → indexation → calcul → écriture
-    indexPrev() · indexTran() · indexEpargne()
-    budgetCalc() · epargneCalc() · checkCeiling() · findPrevLines()
-    getPeriod() · getMonthsText() · toAbsMonth() · parseMmYyyy() · absMonthToText()
-    _parsePrevBounds() · prevLineApplies() · clampStart/End() · roundCent()
+Préparation du calcul client
+  _forecastInputs_()          ← lecture Sheets, sommes mensuelles, paramètres
+    indexTran() · indexEpargne() · getPeriod()
+  getForecast()              ← invalidation du cache uniquement
+  gas/js/Forecast.html       ← calcul des soldes, intérêts, plafonds et donut
 
 Endpoints Web App (google.script.run)
-  getAllData()               ← tout en un appel (forecast, rules, options, savingsProps,
-                                comptes liés SANS solde, tasks, prevs) — sans appel réseau
+  getAllData()               ← forecastInputs, transactions, propriétés,
+                                comptes liés SANS solde, tâches et prévisions
   getAccountBalances()       ← soldes Enable Banking (appel réseau), chargés en parallèle
   addTransaction / editTransactionByRow / deleteTransactionByRow
   getPrevLines / addPrevLine / editPrevLine / deletePrevLine
-  getBudgetRules / getTransOptions / paydayWeb(salary)
+  paydayWeb(salary, balances, expectedMonth) ← clôture sous verrou utilisateur
   getGeminiInsight() · getRevolutTasks / completeTask
   previewRevolutImport()     ← scan non bloquant → candidates (cache) ; aucune écriture
   confirmRevolutImport(sel)  ← écrit la sélection validée puis getAllData()
-  _maybeAlertMammoth()       ← email best-effort à un proche (météo Orage)
+  maybeAlertMammoth()        ← email best-effort à un proche (météo Orage)
 
 Enable Banking (PSD2)
   registerEnableBankingApp() · activateAppEB() · setupEnableBankingWeb()
-  _exchangeEnableBankingCode() · _storeAccounts() · refreshLinkedAccountsWeb()
-  getLinkedAccounts / setShownAccounts · _getAccountBalances()
-  _scanRevolutCandidates() · _commitRevolutRows()  ← scan/écriture import (cf. preview/confirm)
-  _enableBankingHeaders() · _ebFetchJson() · _extractAccounts()
+  _exchangeEnableBankingCode_() · _storeAccounts_() · refreshLinkedAccountsWeb()
+  getLinkedAccounts / setShownAccounts · _getAccountBalances_()
+  _scanRevolutCandidates_() · _commitRevolutRows_() ← helpers privés
+  _enableBankingHeaders_() · _ebFetchJson_() · _extractAccounts_()
 
 Sheets (menu classique)
   spreadExpense() · handleReminders() · include() / includes()
@@ -258,7 +262,7 @@ Sheets (menu classique)
 | `npm run build` | Minifie `gas/Alfred.js` → `gas/Alfred.min.js` |
 | `npm run test:min` | Tests sur `gas/Alfred.min.js` (valide que la minification ne casse rien) |
 | `npm run build:test` | Enchaîne `build` puis `test:min` |
-| `npm run test:e2e` | Tests end-to-end Playwright (canal **msedge**) sur le client mocké |
+| `npm run test:e2e` | Tests end-to-end Playwright (**msedge** local, **chromium** en CI) sur le client mocké |
 | `npm run test:e2e:cov` | Tests e2e + rapport de couverture du JS client (monocart) |
 | `npm run test:e2e:ui` | Playwright en mode UI |
 | `npm run e2e:codegen` | Enregistreur Playwright pour générer un test depuis l'UI |

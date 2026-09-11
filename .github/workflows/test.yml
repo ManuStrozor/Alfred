@@ -1,11 +1,20 @@
 name: Tests
 
+permissions:
+  contents: read
+  pull-requests: read
+
 on:
+  pull_request:
   push:
     branches: [dev]
     paths:
       - '__tests__/**'
       - 'e2e/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - '*config.js'
+      - '.github/**'
   workflow_call:
     inputs:
       run_all:
@@ -34,11 +43,19 @@ jobs:
           base: ${{ github.ref_name }}
           filters: |
             server:
-              - '__tests__/*.test.js'
-              - 'gas/Alfred.js'
+              - '__tests__/**'
+              - 'gas/*.js'
+              - 'gas/js/Forecast.html'
+              - 'package*.json'
+              - 'jest.config.js'
+              - '.github/**'
             client:
-              - 'e2e/tests/*.spec.js'
+              - 'e2e/**'
               - 'gas/**/*.html'
+              - 'scripts/**'
+              - 'package*.json'
+              - 'playwright.config.js'
+              - '.github/**'
 
   test:
     needs: changes
@@ -68,7 +85,9 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
+      - name: Check client scripts
+        run: npm run check:client
       - name: Run playwright tests
         run: npm run test:e2e
         env:

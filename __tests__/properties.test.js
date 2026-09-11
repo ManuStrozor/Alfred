@@ -2,39 +2,37 @@
 
 const { loadAlfred } = require('./helpers/gas-env');
 
-// Note : le mock gas-env partage UN store entre ScriptProperties et UserProperties.
-// On teste donc les comportements observables (valeur présente / absente / défauts),
-// pas la priorité User > Script (indistinguable avec un store unique).
+// ScriptProperties et UserProperties utilisent deux stores distincts.
 
-describe('getProp / setProp', () => {
-  test('getProp : clé absente → fallback', () => {
+describe('getProp_ / setProp_', () => {
+  test('getProp_ : clé absente → fallback', () => {
     const g = loadAlfred();
-    expect(g.getProp('INCONNUE', 'def')).toBe('def');
+    expect(g.getProp_('INCONNUE', 'def')).toBe('def');
   });
 
-  test('setProp puis getProp', () => {
+  test('setProp_ puis getProp_', () => {
     const g = loadAlfred();
-    g.setProp('MA_CLE', 'valeur');
-    expect(g.getProp('MA_CLE')).toBe('valeur');
+    g.setProp_('MA_CLE', 'valeur');
+    expect(g.getProp_('MA_CLE')).toBe('valeur');
   });
 
-  test('getProp : valeur vide → fallback', () => {
+  test('getProp_ : valeur vide → fallback', () => {
     const g = loadAlfred();
-    g.setProp('VIDE', '');
-    expect(g.getProp('VIDE', 'def')).toBe('def');
+    g.setProp_('VIDE', '');
+    expect(g.getProp_('VIDE', 'def')).toBe('def');
   });
 });
 
-describe('getUserProp', () => {
+describe('getUserProp_', () => {
   test('clé absente → fallback', () => {
     const g = loadAlfred();
-    expect(g.getUserProp('RIEN', 'd')).toBe('d');
+    expect(g.getUserProp_('RIEN', 'd')).toBe('d');
   });
 
   test('valeur présente → renvoyée', () => {
     const g = loadAlfred();
-    g.setProp('PRESENTE', 'x');
-    expect(g.getUserProp('PRESENTE', 'd')).toBe('x');
+    g._propStore.set('PRESENTE', 'x');
+    expect(g.getUserProp_('PRESENTE', 'd')).toBe('x');
   });
 });
 
@@ -105,7 +103,7 @@ describe('setAnyProp / deleteProp', () => {
 });
 
 describe('setAnyProp / deleteProp — garde propriétaire (ScriptProperties partagées)', () => {
-  // userEmail() vaut '' dans le mock ; ALFRED_OWNER absent → non-propriétaire par défaut.
+  // ALFRED_OWNER absent → non-propriétaire par défaut.
   test('setAnyProp("script") refusé si non-propriétaire', () => {
     const g = loadAlfred();
     expect(() => g.setAnyProp('script', 'ALFRED_OWNER', 'evil@x')).toThrow(/propriétaire/);
@@ -118,9 +116,9 @@ describe('setAnyProp / deleteProp — garde propriétaire (ScriptProperties part
 
   test('setAnyProp("script") autorisé pour le propriétaire', () => {
     const g = loadAlfred();
-    g._propStore.set('ALFRED_OWNER', ''); // == userEmail() du mock → propriétaire
+    g._scriptStore.set('ALFRED_OWNER', 'user@example.test');
     expect(() => g.setAnyProp('script', 'X', '1')).not.toThrow();
-    expect(g._propStore.get('X')).toBe('1');
+    expect(g._scriptStore.get('X')).toBe('1');
   });
 
   test('source "user" reste autorisée sans être propriétaire', () => {
@@ -134,7 +132,7 @@ describe('getSavingsProps — masquage des secrets', () => {
 
   test('GEMINI_API_KEY : valeur masquée, présence exposée', () => {
     const g = loadAlfred();
-    g._propStore.set('GEMINI_API_KEY', 'secret-123');
+    g._scriptStore.set('GEMINI_API_KEY', 'secret-123');
     expect(byKey(g).GEMINI_API_KEY.value).toBe('');
     expect(byKey(g).GEMINI_API_KEY.configured).toBe(true);
   });

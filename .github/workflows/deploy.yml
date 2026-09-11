@@ -1,5 +1,9 @@
 name: Deploy to GAS
 
+permissions:
+  contents: read
+  pull-requests: read
+
 run-name: Deploy to GAS (${{ github.ref_name }})
 
 on:
@@ -27,20 +31,29 @@ jobs:
       - name: Install clasp
         run: npm install -g @google/clasp
       - name: Write clasp credentials
-        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
       - name: Push to Google Apps Script
         run: clasp push --force
       - name: Deploy new version
-        run: clasp deploy --deploymentId "${{ vars.DEPLOY_ID }}" --description "${{ github.ref_name }}"
+        env:
+          DEPLOY_ID: ${{ vars.DEPLOY_ID }}
+          REF_NAME: ${{ github.ref_name }}
+        run: clasp deploy --deploymentId "$DEPLOY_ID" --description "$REF_NAME"
 
       # Notifie le succès → lancer `npm run dump:rendered` en local pour vérifier le rendu
       - name: Notifier le déploiement (ntfy)
         if: success()
         continue-on-error: true
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           curl -s \
-            -H "Title: Alfred déployé (${{ github.ref_name }})" \
+            -H "Title: Alfred déployé ($REF_NAME)" \
             -H "Tags: white_check_mark" \
-            -H "Click: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -H "Click: $RUN_URL" \
             -d "Déploiement réussi — lance « npm run dump:rendered » pour vérifier le rendu." \
-            "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}"
+            "https://ntfy.sh/$NTFY_TOPIC"

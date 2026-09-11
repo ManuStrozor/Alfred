@@ -25,7 +25,7 @@ const ALFRED_CODE = fs.readFileSync(
   'utf8'
 );
 
-function loadAlfred() {
+function loadAlfred({ scriptStore = new Map(), userStore = new Map(), scriptCache = new Map(), userCache = new Map(), email = 'user@example.test' } = {}) {
   const noop = () => {};
   const nostr = () => '';
   // Capture des écritures setValues (exposée via ctx._writes) pour les tests d'endpoints d'édition.
@@ -48,6 +48,7 @@ function loadAlfred() {
     setValues:     noop,
     getName:       () => 'mock',
     deleteRow:     noop,
+    deleteRows:    noop,
     insertSheet:   () => mockSheet,
   };
 
@@ -80,22 +81,22 @@ function loadAlfred() {
     requireCheckbox: function() { return this; },
     build:           () => ({}),
   };
-  // PropertiesService — store stateful partagé entre PROPS et USER_PROPS
-  const propStore = new Map();
-  const mockPropsObj = {
+  // Les portées script/utilisateur doivent rester distinctes pour tester l'isolation.
+  const propStore = userStore;
+  const props = propStore => ({
     getProperty:    key       => propStore.get(key) ?? null,
     setProperty:    (key, v)  => { propStore.set(key, String(v)); },
     deleteProperty: key       => { propStore.delete(key); },
     getProperties:  ()        => Object.fromEntries(propStore),
-  };
+  });
   // CacheService — store stateful exposé via ctx._cacheStore pour les tests
-  const cacheStore = new Map();
-  const mockCacheObj = {
+  const cacheStore = userCache;
+  const cache = cacheStore => ({
     get:       key        => cacheStore.get(key) ?? null,
     put:       (key, val) => { cacheStore.set(key, val); },
     remove:    key        => { cacheStore.delete(key); },
     removeAll: keys       => { (keys || []).forEach(k => cacheStore.delete(k)); },
-  };
+  });
   // UrlFetchApp — implémentations remplaçables via ctx._setFetch(fn) / ctx._setFetchAll(fn)
   let _fetchImpl    = () => ({ getResponseCode: () => 200, getContentText: () => '{}' });
   let _fetchAllImpl = reqs => (reqs || []).map(() => ({ getResponseCode: () => 200, getContentText: () => '{}' }));
@@ -106,10 +107,11 @@ function loadAlfred() {
       openById:              () => mockSpreadsheet,   // multi-user : openById renvoie le même mock
       getUi:                 () => mockUi,
       newDataValidation:     () => mockValidationBuilder,
+      flush: noop,
     },
     PropertiesService: {
-      getScriptProperties: () => mockPropsObj,
-      getUserProperties:   () => mockPropsObj,
+      getScriptProperties: () => props(scriptStore),
+      getUserProperties:   () => props(userStore),
     },
     ScriptApp: {
       getService: () => ({ getUrl: nostr }),
@@ -118,16 +120,18 @@ function loadAlfred() {
       deleteTrigger:     noop,
     },
     Session: {
-      getActiveUser: () => ({ getEmail: nostr }),
+      getActiveUser: () => ({ getEmail: () => email }),
     },
     CacheService: {
-      getScriptCache: () => mockCacheObj,
-      getUserCache:   () => mockCacheObj,
+      getScriptCache: () => cache(scriptCache),
+      getUserCache:   () => cache(userCache),
     },
     UrlFetchApp: {
       fetch:    (...args) => _fetchImpl(...args),
       fetchAll: (...args) => _fetchAllImpl(...args),
     },
+    LockService: { getUserLock: () => ({ waitLock: noop, releaseLock: noop }) },
+    Utilities: { getUuid: () => require('crypto').randomUUID() },
     Tasks: { Tasks: { insert: noop } },
     Logger:      { log: noop },
     // Stub minimal : évite d'injecter le vrai console (handles ouverts → warning Jest)
@@ -140,6 +144,10 @@ function loadAlfred() {
   ctx._mock       = mock;
   ctx._cacheStore = cacheStore;
   ctx._propStore  = propStore;
+  ctx._scriptStore = scriptStore;
+  ctx._scriptCache = scriptCache;
+  ctx._mockSheet = mockSheet;
+  ctx._mockRange = mockRange;
   ctx._writes     = writes;
   ctx._setLastRow = n => { lastRow = n; };
   ctx._setFetch   = fn => { _fetchImpl = fn; };
